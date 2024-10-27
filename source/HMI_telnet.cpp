@@ -775,7 +775,7 @@ void HMI_set_command(char* loc_param1, char* loc_param2) {
 				RADIO_restart_if_necessary(1, 1, 1);
 				HMI_printf("OK\r\nready> ");
 			} else {
-				HMI_printf("ERROR: Invalid network ID, 15 chars max.\r\nready> ");
+				HMI_printf("ERROR: Invalid network ID (max: 15).\r\nready> ");
 			}
 		}
 		else {
