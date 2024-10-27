@@ -467,7 +467,7 @@ void HMI_display_config(void) {
 	HMI_printf("  frequency: %.3fMHz\r\n  freq_shift: %.3fMHz\r\n  RF_power: %i\r\n  modulation: %i\r\n", ((float)CONF_frequency_HD/1000)+FREQ_RANGE_MIN, (float)CONF_freq_shift/1000, CONF_radio_PA_PWR, CONF_radio_modulation); 
 
 	HMI_printf("  radio_netw_ID: %i\r\n  radio_on_at_start: %s\r\n", CONF_radio_network_ID, HMI_yes_no[CONF_radio_default_state_ON_OFF]);
-	HMI_printf("  telnet active: %s\r\n  telnet routed: %s\r\n", HMI_yes_no[is_telnet_active], HMI_yes_no[is_telnet_routed]);
+	HMI_printf("  telnet_active: %s\r\n  telnet_routed: %s\r\n", HMI_yes_no[is_telnet_active], HMI_yes_no[is_telnet_routed]);
 	IP_int2char (LAN_conf_saved.LAN_modem_IP, IP_loc);
 	IP_int2char (LAN_conf_saved.LAN_subnet_mask, IP_loc+4);
 	HMI_printf("  modem_IP: %i.%i.%i.%i\r\n  netmask: %i.%i.%i.%i\r\n", IP_loc[0], IP_loc[1],IP_loc[2],IP_loc[3],IP_loc[4],IP_loc[5],IP_loc[6],IP_loc[7]);
