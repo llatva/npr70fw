@@ -58,7 +58,7 @@ int main()
 {
     wait_ms(200);
 	pc.baud(921600);
-    pc.printf("\r\n\r\nNPR FW %s\r\n", FW_VERSION);
+    pc.printf("\r\n\r\nNPR, FW: %s\r\n", FW_VERSION);
 	
 	Timer slow_timer; 
 	int i = 1;
@@ -155,9 +155,9 @@ int main()
 		
 	}
 	if (is_SRAM_ext) {
-		printf("config WITH ext SRAM\r\n");
+		printf("External SRAM detected.\r\n");
 	} else {
-		printf("config WITHOUT ext SRAM\r\n");
+		printf("External SRAM not found.\r\n");
 	}
 	
 	wait_ms(100);
@@ -168,9 +168,9 @@ int main()
 
 	i = SI4463_configure_all();
 	if (i == 1) {
-		HMI_printf("SI4463 configured\r\n");
+		HMI_printf("Si4463 configured successfully.\r\n");
 	} else {
-		HMI_printf("SI4463 error while configure\r\n");
+		HMI_printf("ERROR: Si4463 initialization failed.\r\n");
 		SI4463_print_version(G_SI4463);
 		wait_ms(5000);
 		if (serial_term_loop() == 0) {//no serial char detected

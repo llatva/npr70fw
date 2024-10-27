@@ -65,7 +65,7 @@ unsigned int virt_EEPROM_write(npr_config* in_data, unsigned int previous_index)
 	loc_address = NFPR_config_addr_begin + (new_index % FLASH_BANKS)*256; //previous config 
 	my_loc_flash.init();
 	if ((new_index & 7) == 0) { //new sector, erase sector
-		HMI_printf ("erase sector:%X\r\n", loc_address);
+		HMI_printf ("Erase sector: %X\r\n", loc_address);
 		my_loc_flash.erase(loc_address, 2048);
 	}
 	// Make sure magic number is correct to detect a valid configuration block
@@ -73,7 +73,7 @@ unsigned int virt_EEPROM_write(npr_config* in_data, unsigned int previous_index)
 	// writes new index
 	in_data->index = new_index;
 	my_loc_flash.program(in_data, loc_address, 256);
-	HMI_printf("write success\r\n");
+	HMI_printf("Write success\r\n");
 	my_loc_flash.deinit();
 	return new_index;
 }
@@ -141,7 +141,7 @@ unsigned char NFPR_random_generator(AnalogIn* analog_pin) {
 
 unsigned int NFPR_config_save(void) {
 	if ( (CONF_radio_my_callsign[0] == 0) || (CONF_radio_my_callsign[2] == 0) ) {
-		HMI_printf("ERROR : not yet configured\r\n");		
+		HMI_printf("ERROR: Unable to save, callsign is missing. Please configure your radio and retry.\r\n");		
 	} else {
 		write_config_to_raw_string(&raw_config_data);
 		config_index = virt_EEPROM_write (&raw_config_data, config_index);
