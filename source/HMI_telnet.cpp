@@ -331,13 +331,17 @@ void HMI_line_parse (char* RX_text, int RX_text_count) {
 			command_understood = 1;
 			HMI_printf("Firmware: %s\r\nfreq band: %s\r\nready> ", FW_VERSION, FREQ_BAND);
 		}
+		if (strcmp(loc_command_str, "73") == 0) {
+			command_understood = 1;
+			HMI_printf("73!\r\nready> ");
+		}
 		// exit or logout:
 		if ((strcmp(loc_command_str, "exit") == 0)||(strcmp(loc_command_str, "logout") == 0)) {
 			command_understood = 1;
 			HMI_exit();
 		}
 		// help:
-		if ((strcmp(loc_command_str, "help") == 0)||(strcmp(loc_command_str, "?") == 0)) {
+		if ((strcmp(loc_command_str, "help") == 0)||(strcmp(loc_command_str, "?") == 0)||(strcmp(loc_command_str, "apua") == 0)) {
 			command_understood = 1;
 			HMI_printf("\r\nCommand HELP:\r\n");
 			HMI_printf("  display config\tdisplay current configuration\r\n");
