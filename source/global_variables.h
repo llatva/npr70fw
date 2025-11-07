@@ -77,8 +77,8 @@ extern unsigned int RX_FIFO_WR_point;
 extern unsigned int RX_FIFO_RD_point;
 extern unsigned int RX_FIFO_last_received;
 //extern unsigned char RX_FIFO_data[0x2000]; //8kB
-extern unsigned char RX_FIFO_data[0x2000]; //8kB
-#define RX_FIFO_mask 0x1FFF 
+extern unsigned char RX_FIFO_data[0x800]; //2kB
+#define RX_FIFO_mask 0x7FF
 
 #define TXPS_FIFO_mask 0x3FFF
 #define TXPS_FIFO_threshold 14000

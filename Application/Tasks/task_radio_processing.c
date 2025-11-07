@@ -15,6 +15,8 @@
 #include "task_radio_processing.h"
 #include "app_common.h"
 #include "w5500_driver.h"
+#include "FreeRTOS.h"
+#include "task.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -49,10 +51,12 @@ static const uint8_t parity_bit_check[256] = {
 static W5500_Context_t *hw5500 = NULL;
 
 /* Per-client packet reassembly buffers - allocated dynamically to save static RAM */
-static uint8_t *ethernet_buffer[RADIO_ADDR_TABLE_SIZE];  /* Pointers to 1600-byte buffers */
+uint8_t *ethernet_buffer[RADIO_ADDR_TABLE_SIZE];  /* Pointers to 1600-byte buffers (lazy-allocated) */
 static uint16_t size_received[RADIO_ADDR_TABLE_SIZE];
 static uint8_t prev_seg_counter[RADIO_ADDR_TABLE_SIZE];
 static uint8_t curr_pkt_counter[RADIO_ADDR_TABLE_SIZE];
+/* Last-used timestamp (ms) for idle freeing */
+uint32_t buffer_last_used_ms[RADIO_ADDR_TABLE_SIZE];
 
 /* Temporary decode buffer */
 static uint8_t data_RX[360];
@@ -70,6 +74,9 @@ static void ProcessIPv4Packet(uint8_t client_ID, uint8_t *data, uint16_t size);
 static void ProcessSignalingFrame(uint8_t *data, uint16_t size, int32_t TA);
 static void ProcessTDMAAllocation(uint8_t *data, uint16_t size);
 static void UpdateTDMAByte(uint8_t tdma_byte, uint8_t client_byte, uint8_t protocol_byte, uint32_t frame_timer);
+/* Lazy allocation helpers */
+static uint8_t *GetOrAllocBuffer(uint8_t LID);
+static void FreeIdleBuffers(void);
 static int32_t MeasureTDMA_TA(uint32_t frame_timer, uint8_t tdma_byte, uint8_t client_byte, int frame_size);
 
 /**
@@ -78,22 +85,19 @@ static int32_t MeasureTDMA_TA(uint32_t frame_timer, uint8_t tdma_byte, uint8_t c
  */
 void RadioProcessingTask_Init(W5500_Context_t *w5500_ctx)
 {
+    printf("RadioProcessingTask_Init: entry\r\n");
     hw5500 = w5500_ctx;
     
-    /* Allocate reassembly buffers from FreeRTOS heap (saves 25KB of static RAM) */
+    /* Lazy allocation: don't preallocate buffers here. Initialize control arrays. */
     for (int i = 0; i < RADIO_ADDR_TABLE_SIZE; i++) {
-        ethernet_buffer[i] = (uint8_t *)pvPortMalloc(1600);
-        if (ethernet_buffer[i] == NULL) {
-            /* Allocation failed - critical error */
-            while(1);  /* Trap */
-        }
-        memset(ethernet_buffer[i], 0, 1600);
+        ethernet_buffer[i] = NULL;
+        size_received[i] = 0;
+        prev_seg_counter[i] = 0;
+        curr_pkt_counter[i] = 0;
+        buffer_last_used_ms[i] = 0;
     }
-    
-    /* Initialize reassembly state */
-    memset(size_received, 0, sizeof(size_received));
-    memset(prev_seg_counter, 0, sizeof(prev_seg_counter));
-    memset(curr_pkt_counter, 0, sizeof(curr_pkt_counter));
+
+    printf("RadioProcessingTask_Init: done (lazy allocation enabled)\r\n");
 }
 
 /**
@@ -222,27 +226,42 @@ void vRadioProcessingTask(void *argument)
                             seg_counter = segmenter_byte & 0x07;
                             
                             if (seg_counter == 0) {
-                                /* First segment - start new packet */
-                                curr_pkt_counter[LID] = pkt_counter;
-                                memcpy(ethernet_buffer[LID] + 14, data_RX + 3, segment_size);
-                                size_received[LID] = segment_size;
+                                /* First segment - allocate buffer lazily if needed */
+                                uint8_t *buf = GetOrAllocBuffer(LID);
+                                if (buf == NULL) {
+                                    /* Couldn't allocate - drop packet */
+                                    size_received[LID] = 0;
+                                } else {
+                                    curr_pkt_counter[LID] = pkt_counter;
+                                    memcpy(buf + 14, data_RX + 3, segment_size);
+                                    size_received[LID] = segment_size;
+                                    buffer_last_used_ms[LID] = xTaskGetTickCount() * portTICK_PERIOD_MS;
+                                }
                             } else if ((seg_counter == (prev_seg_counter[LID] + 1)) && 
                                        (pkt_counter == curr_pkt_counter[LID])) {
                                 /* Continuation segment */
-                                memcpy(ethernet_buffer[LID] + size_received[LID] + 14, 
-                                       data_RX + 3, segment_size);
-                                size_received[LID] += segment_size;
+                                uint8_t *buf = ethernet_buffer[LID];
+                                if (buf != NULL) {
+                                    memcpy(buf + size_received[LID] + 14, 
+                                           data_RX + 3, segment_size);
+                                    size_received[LID] += segment_size;
+                                    buffer_last_used_ms[LID] = xTaskGetTickCount() * portTICK_PERIOD_MS;
+                                } else {
+                                    /* Missing buffer - continuity broken */
+                                    size_received[LID] = 0;
+                                }
                             } else {
                                 /* Continuity error - reset */
                                 size_received[LID] = 0;
                             }
-                            
+
                             prev_seg_counter[LID] = seg_counter;
-                            
+
                             if (is_last_seg && size_received[LID] > 0) {
                                 /* Complete packet - process it */
                                 ProcessIPv4Packet(LID, ethernet_buffer[LID], size_received[LID] + 14);
                                 rx_packet_count++;
+                                buffer_last_used_ms[LID] = xTaskGetTickCount() * portTICK_PERIOD_MS;
                             }
                             break;
                             
@@ -271,8 +290,9 @@ void vRadioProcessingTask(void *argument)
             UpdateTDMAByte(tdma_byte, client_byte, protocol_byte, frame_timer);
             
         } else {
-            /* No data in FIFO - sleep briefly */
+            /* No data in FIFO - sleep briefly and free idle buffers occasionally */
             vTaskDelay(pdMS_TO_TICKS(1));
+            FreeIdleBuffers();
         }
     }
 }
@@ -438,4 +458,50 @@ static int32_t MeasureTDMA_TA(uint32_t frame_timer, uint8_t tdma_byte, uint8_t c
     }
     
     return TA_answer;
+}
+
+/* Attempt to return an existing buffer or allocate one if enough heap is available.
+ * Returns NULL if allocation failed.
+ */
+static uint8_t *GetOrAllocBuffer(uint8_t LID)
+{
+    if (LID >= RADIO_ADDR_TABLE_SIZE) return NULL;
+
+    if (ethernet_buffer[LID] != NULL) return ethernet_buffer[LID];
+
+    unsigned int free_before = (unsigned int)xPortGetFreeHeapSize();
+    if (free_before <= 1800U) {
+        /* Not enough heap to allocate safely */
+        return NULL;
+    }
+
+    uint8_t *buf = (uint8_t *)pvPortMalloc(1600);
+    if (buf == NULL) return NULL;
+
+    memset(buf, 0, 1600);
+    ethernet_buffer[LID] = buf;
+    buffer_last_used_ms[LID] = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    printf("GetOrAllocBuffer: allocated buffer for LID %u at %p (free after: %u)\r\n",
+           (unsigned int)LID, (void*)buf, (unsigned int)xPortGetFreeHeapSize());
+    return buf;
+}
+
+/* Free buffers that haven't been used for IDLE_TIMEOUT_MS milliseconds */
+#define IDLE_TIMEOUT_MS 60000  /* 60 seconds */
+static void FreeIdleBuffers(void)
+{
+    uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    for (int i = 0; i < RADIO_ADDR_TABLE_SIZE; i++) {
+        if (ethernet_buffer[i] != NULL) {
+            if (now > buffer_last_used_ms[i] && (now - buffer_last_used_ms[i]) > IDLE_TIMEOUT_MS) {
+                vPortFree(ethernet_buffer[i]);
+                printf("FreeIdleBuffers: freed buffer %d at %p\r\n", i, (void*)ethernet_buffer[i]);
+                ethernet_buffer[i] = NULL;
+                size_received[i] = 0;
+                prev_seg_counter[i] = 0;
+                curr_pkt_counter[i] = 0;
+                buffer_last_used_ms[i] = 0;
+            }
+        }
+    }
 }

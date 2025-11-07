@@ -35,28 +35,12 @@
 //Serial pc(SERIAL_TX, SERIAL_RX); // Nucleo
 //Serial pc(USBTX, USBRX); //NXP LPC1769
 
-DigitalInOut FDD_trig_pin(PA_10);//GPIO_11
-InterruptIn FDD_trig_IRQ(PA_10);//GPIO_11
-DigitalOut PTT_PA_pin(PA_9);//GPIO_10
-
-DigitalOut SI4463_SDN(PA_1);
-
-AnalogIn Random_pin(PA_0);
-DigitalOut LED_RX_loc(PB_1);
-DigitalOut LED_connected(PA_12);
-
-DigitalIn Int_W5500(PA_8);
-DigitalOut CS1(PA_11);//CS W5500
-SPI spi_2(PB_5, PB_4, PB_3); // mosi, miso, sclk
-DigitalOut CS3(PB_0);// CS ext SRAM PB_0 
-
-InterruptIn Int_SI4463(PA_3);
-DigitalOut CS2(PA_4);
-SPI spi_1(PA_7, PA_6, PA_5); // mosi, miso, sclk
+// Hardware peripheral objects moved into main() to avoid static initialization before main()
 
 int main()
 {
-    wait_ms(200);
+	printf("SRAM: entered main()\r\n");
+	wait_ms(200);
 	pc.baud(921600);
     pc.printf("\r\n\r\nNPR, FW: %s\r\n", FW_VERSION);
 	
@@ -66,6 +50,26 @@ int main()
 	
 	static LAN_conf_T* LAN_conf_p;
 	LAN_conf_p = &LAN_conf_applied;
+
+	/* Move hardware peripheral constructions here to avoid static init before runtime */
+	static DigitalInOut FDD_trig_pin(PA_10); // GPIO_11
+	static InterruptIn FDD_trig_IRQ(PA_10); // GPIO_11
+	static DigitalOut PTT_PA_pin(PA_9); // GPIO_10
+
+	static DigitalOut SI4463_SDN(PA_1);
+
+	static AnalogIn Random_pin(PA_0);
+	static DigitalOut LED_RX_loc(PB_1);
+	static DigitalOut LED_connected(PA_12);
+
+	static DigitalIn Int_W5500(PA_8);
+	static DigitalOut CS1(PA_11); // CS W5500
+	static SPI spi_2(PB_5, PB_4, PB_3); // mosi, miso, sclk
+	static DigitalOut CS3(PB_0); // CS ext SRAM PB_0
+
+	static InterruptIn Int_SI4463(PA_3);
+	static DigitalOut CS2(PA_4);
+	static SPI spi_1(PA_7, PA_6, PA_5); // mosi, miso, sclk
 	
 	static W5500_chip W5500_1;
 	W5500_p1 = &W5500_1;
@@ -115,8 +119,11 @@ int main()
 	CS3=1;
 	SI4463_SDN = 1;
 	
+	printf("SRAM: before wait_ms(20)\r\n");
 	wait_ms(20);
+	printf("SRAM: about to call ext_SRAM_detect()\r\n");
 	is_SRAM_ext = ext_SRAM_detect();
+	printf("SRAM: ext_SRAM_detect() returned %d\r\n", is_SRAM_ext);
 	
 	LED_RX_loc = 1; 
 	for (i=0; i<7; i++) {

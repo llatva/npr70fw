@@ -14,6 +14,7 @@
 #include "w5500_driver.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include <stdio.h>  /* For printf debugging */
 
 /* Private defines */
 #define W5500_SPI_TIMEOUT       100  /* SPI timeout in ms */
@@ -28,24 +29,53 @@ static void W5500_SPI_Unlock(W5500_Context_t *ctx);
 
 /**
   * @brief  Initialize W5500 device
+  * @note   Called before scheduler starts, so cannot use mutex/semaphore
   */
 HAL_StatusTypeDef W5500_Init(W5500_Context_t *ctx)
 {
+    HAL_StatusTypeDef status;
+    uint8_t header[3];
+    uint8_t data = 0x80;  /* Soft reset bit */
+    
+    printf("W5500_Init: entered\r\n");
+    
     if (ctx == NULL || ctx->hspi == NULL || ctx->spi_mutex == NULL) {
+        printf("W5500_Init: NULL context!\r\n");
         return HAL_ERROR;
     }
 
+    printf("W5500_Init: setting CS high\r\n");
     /* Ensure CS is high (inactive) */
     HAL_GPIO_WritePin(ctx->cs_port, ctx->cs_pin, GPIO_PIN_SET);
     
-    /* Small delay for W5500 to stabilize */
-    vTaskDelay(pdMS_TO_TICKS(10));
+    printf("W5500_Init: delay 1\r\n");
+    /* Small delay for W5500 to stabilize - use busy wait instead of HAL_Delay */
+    for (volatile uint32_t i = 0; i < 80000; i++);  /* ~10ms at 80MHz */
     
-    /* Perform soft reset via PHY configuration */
-    W5500_WriteByte(ctx, W5500_MR, W5500_COMMON_REG_BLOCK, 0x80);
-    vTaskDelay(pdMS_TO_TICKS(10));
+    printf("W5500_Init: preparing SPI transaction\r\n");
+    /* Perform soft reset via direct SPI write (no mutex - scheduler not running yet)
+     * Write to W5500_MR (Mode Register) in common register block
+     */
+    header[0] = (W5500_MR >> 8) & 0xFF;
+    header[1] = W5500_MR & 0xFF;
+    header[2] = (W5500_COMMON_REG_BLOCK << 3) | W5500_WRITE_MODE;
     
-    return HAL_OK;
+    printf("W5500_Init: CS low, starting SPI transmit\r\n");
+    W5500_CS_Low(ctx);
+    status = HAL_SPI_Transmit(ctx->hspi, header, 3, W5500_SPI_TIMEOUT);
+    printf("W5500_Init: header sent, status=%d\r\n", status);
+    if (status == HAL_OK) {
+        status = HAL_SPI_Transmit(ctx->hspi, &data, 1, W5500_SPI_TIMEOUT);
+        printf("W5500_Init: data sent, status=%d\r\n", status);
+    }
+    for (volatile int i = 0; i < 10; i++);  /* Small delay */
+    W5500_CS_High(ctx);
+    
+    printf("W5500_Init: CS high, waiting for reset\r\n");
+    for (volatile uint32_t i = 0; i < 80000; i++);  /* ~10ms at 80MHz */
+    
+    printf("W5500_Init: complete, status=%d\r\n", status);
+    return status;
 }
 
 /**

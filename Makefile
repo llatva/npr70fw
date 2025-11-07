@@ -49,12 +49,15 @@ C_SOURCES += Application/Common/watchdog.c
 C_SOURCES += Application/Tasks/task_radio_isr.c
 C_SOURCES += Application/Tasks/task_radio_processing.c
 C_SOURCES += Application/Tasks/task_tdma.c
+
 C_SOURCES += Application/Tasks/task_ethernet_rx.c
 C_SOURCES += Application/Tasks/task_ethernet_tx.c
 C_SOURCES += Application/Tasks/task_signaling.c
 C_SOURCES += Application/Tasks/task_dhcp_arp.c
 C_SOURCES += Application/Tasks/task_snmp.c
 C_SOURCES += Application/Tasks/task_telnet.c
+C_SOURCES += Application/Tasks/task_ethernet.c
+C_SOURCES += Application/Tasks/task_networkmgmt.c
 
 ASM_SOURCES = Core/Src/startup_stm32l432xx.s
 

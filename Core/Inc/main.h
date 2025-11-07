@@ -122,9 +122,9 @@ extern "C" {
 /* Exported constants --------------------------------------------------------*/
 
 /* Queue sizes */
-#define QUEUE_RADIO_TO_ETH_SIZE     16  /* Radio RX to Ethernet TX */
-#define QUEUE_ETH_TO_RADIO_SIZE     16  /* Ethernet RX to Radio TX */
-#define QUEUE_RADIO_ISR_SIZE        8   /* ISR to Radio task */
+#define QUEUE_RADIO_TO_ETH_SIZE     6   /* Radio RX to Ethernet TX */
+#define QUEUE_ETH_TO_RADIO_SIZE     6   /* Ethernet RX to Radio TX */
+#define QUEUE_RADIO_ISR_SIZE        4   /* ISR to Radio task */
 #define QUEUE_W5500_ISR_SIZE        4   /* W5500 interrupt events */
 
 /* Maximum packet sizes */
@@ -134,7 +134,7 @@ extern "C" {
 #define RADIO_TX_BUFFER_SIZE        128
 
 /* External SRAM */
-#define RADIO_ADDR_TABLE_SIZE       16
+#define RADIO_ADDR_TABLE_SIZE       4
 
 /* Exported macro ------------------------------------------------------------*/
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))

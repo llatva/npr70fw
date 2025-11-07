@@ -38,7 +38,7 @@ char HMI_out_str[120];
 unsigned int RX_FIFO_WR_point = 0;
 unsigned int RX_FIFO_RD_point = 0;
 unsigned int RX_FIFO_last_received = 0;
-unsigned char RX_FIFO_data[0x2000]; //8kB
+unsigned char RX_FIFO_data[0x800]; //2kB (reduced from 8kB to save RAM)
 
 //unsigned int debug_counter = 0;
 unsigned int RX_top_FDD_up_counter = 0;

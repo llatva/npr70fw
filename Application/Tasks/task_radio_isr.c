@@ -34,7 +34,9 @@ static void ProcessTxInterrupt(uint32_t timestamp);
  */
 void RadioISRTask_Init(SI4463_Context_t *si4463_ctx)
 {
+    printf("RadioISRTask_Init: entry\r\n");
     hsi4463 = si4463_ctx;
+    printf("RadioISRTask_Init: done\r\n");
 }
 
 /**

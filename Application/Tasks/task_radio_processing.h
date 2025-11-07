@@ -22,6 +22,10 @@ void vRadioProcessingTask(void *argument);
 /* Initialization function */
 void RadioProcessingTask_Init(W5500_Context_t *w5500_ctx);
 
+/* Diagnostics: expose buffer pointers and last-used timestamps */
+extern uint8_t *ethernet_buffer[];
+extern uint32_t buffer_last_used_ms[];
+
 #ifdef __cplusplus
 }
 #endif

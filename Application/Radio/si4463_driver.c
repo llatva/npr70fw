@@ -44,8 +44,8 @@ HAL_StatusTypeDef SI4463_Init(SI4463_Context_t *ctx)
     /* Ensure SDN is low (active, chip enabled) */
     HAL_GPIO_WritePin(ctx->sdn_port, ctx->sdn_pin, GPIO_PIN_RESET);
     
-    /* Small delay for radio to stabilize */
-    vTaskDelay(pdMS_TO_TICKS(20));
+    /* Small delay for radio to stabilize - use busy wait instead of HAL_Delay */
+    for (volatile uint32_t i = 0; i < 160000; i++);  /* ~20ms at 80MHz */
     
     return HAL_OK;
 }
@@ -63,8 +63,12 @@ HAL_StatusTypeDef SI4463_Shutdown(SI4463_Context_t *ctx, uint8_t enable)
     HAL_GPIO_WritePin(ctx->sdn_port, ctx->sdn_pin, 
                       enable ? GPIO_PIN_SET : GPIO_PIN_RESET);
     
-    /* Delay for chip to respond */
-    vTaskDelay(pdMS_TO_TICKS(10));
+    /* Delay for chip to respond (use HAL_Delay if scheduler not started) */
+    if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    } else {
+        HAL_Delay(10);
+    }
     
     return HAL_OK;
 }

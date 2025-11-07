@@ -16,6 +16,9 @@
 #include "task.h"
 #include <string.h>
 
+/* Use TIM2 microsecond counter for delays before scheduler if available */
+extern TIM_HandleTypeDef htim2;
+
 /* Private defines */
 #define SRAM_SPI_TIMEOUT        100  /* SPI timeout in ms */
 
@@ -28,21 +31,49 @@ static uint16_t ExtSRAM_FIFO_FindFreeSlot(ExtSRAM_FIFO_Mgmt_t *mgmt);
 
 /**
   * @brief  Initialize external SRAM device
+  * @note   Called before scheduler starts, so cannot use mutex/semaphore
   */
 HAL_StatusTypeDef ExtSRAM_Init(ExtSRAM_Context_t *ctx)
 {
+    HAL_StatusTypeDef status;
+    uint8_t cmd[2];
+    uint8_t dummy_rx[2];
+    
     if (ctx == NULL || ctx->hspi == NULL || ctx->spi_mutex == NULL) {
+        printf("ExtSRAM_Init: invalid ctx or handles (ctx=%p, hspi=%p, mutex=%p)\r\n", (void*)ctx, (void*)ctx->hspi, (void*)ctx->spi_mutex);
         return HAL_ERROR;
     }
 
     /* Ensure CS is high (inactive) */
+    printf("ExtSRAM_Init: setting CS high\r\n");
     HAL_GPIO_WritePin(ctx->cs_port, ctx->cs_pin, GPIO_PIN_SET);
     
-    /* Small delay for SRAM to stabilize */
-    vTaskDelay(pdMS_TO_TICKS(10));
+    /* Small delay for SRAM to stabilize. HAL_Delay may not work before scheduler
+       so use TIM2 microsecond counter if available (TIM2 configured at 1MHz). */
+    printf("ExtSRAM_Init: busy-waiting 10ms using TIM2\r\n");
+    if (&htim2 != NULL && htim2.Instance != NULL) {
+        uint32_t start = __HAL_TIM_GET_COUNTER(&htim2);
+        while (((uint32_t)(__HAL_TIM_GET_COUNTER(&htim2) - start)) < 10000U) {
+            /* busy wait ~10ms */
+        }
+    } else {
+        /* Fallback to simple loop (approximate) */
+        for (volatile uint32_t i = 0; i < 160000; i++); /* rough ~10ms at 80MHz CPU */
+    }
+    printf("ExtSRAM_Init: delay done\r\n");
     
-    /* Set SRAM to sequential mode for better performance */
-    return ExtSRAM_SetMode(ctx, SRAM_MODE_SEQUENTIAL);
+    /* Set SRAM to sequential mode via direct SPI (no mutex - scheduler not running yet) */
+    cmd[0] = SRAM_CMD_WRMR;
+    cmd[1] = SRAM_MODE_SEQUENTIAL;
+    
+    printf("ExtSRAM_Init: pulling CS low and sending WRMR\r\n");
+    ExtSRAM_CS_Low(ctx);
+    status = HAL_SPI_TransmitReceive(ctx->hspi, cmd, dummy_rx, 2, SRAM_SPI_TIMEOUT);
+    printf("ExtSRAM_Init: HAL_SPI_TransmitReceive returned %d\r\n", (int)status);
+    ExtSRAM_CS_High(ctx);
+    printf("ExtSRAM_Init: CS high after WRMR\r\n");
+    
+    return status;
 }
 
 /**

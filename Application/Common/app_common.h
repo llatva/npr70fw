@@ -32,17 +32,17 @@ extern "C" {
 #define FW_VERSION "2025_11_07-freertos-v1.0"
 
 /* Radio configuration constants - from si4463_driver.h */
-#define RADIO_ADDR_TABLE_SIZE 16
+#define RADIO_ADDR_TABLE_SIZE 4  /* Reduced from 16 to save heap (4×1600 = 6.4KB vs 25.6KB) */
 
 /* RX FIFO configuration */
-#define RX_FIFO_SIZE 0x2000  /* 8KB circular buffer */
+#define RX_FIFO_SIZE 0x800  /* 2KB circular buffer (reduced from 8KB to save internal RAM) */
 #define RX_FIFO_MASK (RX_FIFO_SIZE - 1)
 
 /* Queue sizes */
 #define RADIO_ISR_QUEUE_SIZE 8
-#define RADIO_TX_QUEUE_SIZE 16
-#define ETHERNET_RX_QUEUE_SIZE 8
-#define ETHERNET_TX_QUEUE_SIZE 8
+#define RADIO_TX_QUEUE_SIZE 4      /* Reduced from 16 to save heap */
+#define ETHERNET_RX_QUEUE_SIZE 2   /* Reduced from 8 to save heap */
+#define ETHERNET_TX_QUEUE_SIZE 2   /* Reduced from 8 to save heap */
 
 /* Exported types ------------------------------------------------------------*/
 

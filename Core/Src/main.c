@@ -33,10 +33,8 @@
 #include "task_radio_processing.h"
 #include "task_tdma.h"
 #include "task_signaling.h"
-#include "task_ethernet_rx.h"
-#include "task_ethernet_tx.h"
-#include "task_dhcp_arp.h"
-#include "task_snmp.h"
+#include "task_ethernet.h"
+#include "task_networkmgmt.h"
 #include "task_telnet.h"
 #include "w5500_driver.h"
 #include "si4463_driver.h"
@@ -284,12 +282,17 @@ int main(void)
   } else {
     printf("Boot: W5500 OK\r\n");
     
+    /* Skip socket configuration - will be done by tasks after scheduler starts
+     * (socket config uses mutex which requires scheduler running)
+     */
+    #if 0
     /* Configure W5500 application sockets (DHCP, SNMP, Telnet) */
     if (W5500_ConfigureAppSockets(&hw5500) != HAL_OK) {
       printf("WARNING: W5500 socket config failed!\r\n");
     } else {
       printf("Boot: W5500 sockets configured\r\n");
     }
+    #endif
   }
   
   printf("Boot: Initializing SI4463...\r\n");
@@ -312,58 +315,61 @@ int main(void)
   
   /* Initialize task-specific modules */
   printf("Boot: Initializing task modules...\r\n");
+  
+  printf("  - RadioISRTask_Init...\r\n");
   RadioISRTask_Init(&hsi4463);
+  
+  printf("  - RadioProcessingTask_Init...\r\n");
   RadioProcessingTask_Init(&hw5500);
+  
+  printf("  - TDMATask_Init...\r\n");
   TDMATask_Init(&hsi4463);
+  
+  printf("  - SignalingTask_Init...\r\n");
   SignalingTask_Init();
-  EthernetRxTask_Init(&hw5500);
-  EthernetTxTask_Init(&hw5500);
-  DHCPARPTask_Init(&hw5500);
-  SNMPTask_Init(&hw5500);
+  
+  printf("  - EthernetTask_Init...\r\n");
+  EthernetTask_Init(&hw5500);
+  printf("  - NetworkMgmtTask_Init...\r\n");
+  NetworkMgmtTask_Init(&hw5500);
+  
+  printf("  - TelnetTask_Init...\r\n");
   TelnetTask_Init(&hw5500);
+  
   printf("Boot: Task modules initialized\r\n");
 
   /* Create FreeRTOS tasks */
   printf("Boot: Creating FreeRTOS tasks...\r\n");
   
   /* Radio tasks - highest priority for timing-critical TDMA */
-  if (xTaskCreate(vRadioISRHandlerTask, "RadioISR", 448, NULL, PRIORITY_RADIO_ISR_HANDLER, &xRadioISRHandlerTask) != pdPASS) {
+  if (xTaskCreate(vRadioISRHandlerTask, "RadioISR", 160, NULL, PRIORITY_RADIO_ISR_HANDLER, &xRadioISRHandlerTask) != pdPASS) {
     printf("FATAL: Failed to create RadioISR task!\r\n");
     Error_Handler();
   }
-  if (xTaskCreate(vRadioProcessingTask, "RadioProc", 448, NULL, PRIORITY_RADIO_PROCESS, &xRadioProcessingTask) != pdPASS) {
+  if (xTaskCreate(vRadioProcessingTask, "RadioProc", 160, NULL, PRIORITY_RADIO_PROCESS, &xRadioProcessingTask) != pdPASS) {
     printf("FATAL: Failed to create RadioProc task!\r\n");
     Error_Handler();
   }
-  if (xTaskCreate(vTDMATask, "TDMA", 448, NULL, PRIORITY_TDMA, &xTDMATask) != pdPASS) {
+  if (xTaskCreate(vTDMATask, "TDMA", 160, NULL, PRIORITY_TDMA, &xTDMATask) != pdPASS) {
     printf("FATAL: Failed to create TDMA task!\r\n");
     Error_Handler();
   }
-  if (xTaskCreate(vSignalingTask, "Signaling", 320, NULL, PRIORITY_SIGNALING, &xSignalingTask) != pdPASS) {
+  if (xTaskCreate(vSignalingTask, "Signaling", 128, NULL, PRIORITY_SIGNALING, &xSignalingTask) != pdPASS) {
     printf("FATAL: Failed to create Signaling task!\r\n");
     Error_Handler();
   }
   
-  /* Ethernet tasks - medium priority */
-  if (xTaskCreate(vEthernetRxTask, "EthRx", 448, NULL, PRIORITY_ETH_RX, &xEthernetRxTask) != pdPASS) {
-    printf("FATAL: Failed to create EthRx task!\r\n");
+  /* Combined Ethernet task (RX+TX) */
+  if (xTaskCreate(vEthernetTask, "Ethernet", 200, NULL, PRIORITY_ETH_RX, NULL) != pdPASS) {
+    printf("FATAL: Failed to create Ethernet task!\r\n");
     Error_Handler();
   }
-  if (xTaskCreate(vEthernetTxTask, "EthTx", 320, NULL, PRIORITY_ETH_TX, &xEthernetTxTask) != pdPASS) {
-    printf("FATAL: Failed to create EthTx task!\r\n");
+  /* Combined NetworkMgmt task (DHCP/ARP + SNMP) */
+  if (xTaskCreate(vNetworkMgmtTask, "NetMgmt", 160, NULL, PRIORITY_DHCP_ARP, NULL) != pdPASS) {
+    printf("FATAL: Failed to create NetworkMgmt task!\r\n");
     Error_Handler();
   }
-  
-  /* Service tasks - lower priority (stubs need minimal stack) */
-  if (xTaskCreate(vDHCPARPTask, "DHCP_ARP", 224, NULL, PRIORITY_DHCP_ARP, &xDHCPARPTask) != pdPASS) {
-    printf("FATAL: Failed to create DHCP_ARP task!\r\n");
-    Error_Handler();
-  }
-  if (xTaskCreate(vSNMPTask, "SNMP", 320, NULL, PRIORITY_SNMP, &xSNMPTask) != pdPASS) {
-    printf("FATAL: Failed to create SNMP task!\r\n");
-    Error_Handler();
-  }
-  if (xTaskCreate(vTelnetTask, "Telnet", 224, NULL, PRIORITY_TELNET, &xTelnetTask) != pdPASS) {
+  if (xTaskCreate(vTelnetTask, "Telnet", 160, NULL, PRIORITY_TELNET, &xTelnetTask) != pdPASS) {
     printf("FATAL: Failed to create Telnet task!\r\n");
     Error_Handler();
   }
@@ -646,9 +652,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void vApplicationMallocFailedHook(void)
 {
   /* Called if a call to pvPortMalloc() fails because there is insufficient
-     free memory available in the FreeRTOS heap.  pvPortMalloc() is called
-     internally by FreeRTOS API functions that create tasks, queues, etc. */
-  Error_Handler();
+     free memory available in the FreeRTOS heap. Print diagnostics and halt
+     so we can inspect the serial output. */
+  size_t free_heap = xPortGetFreeHeapSize();
+  printf("vApplicationMallocFailedHook: pvPortMalloc failed, free heap=%u\r\n", (unsigned int)free_heap);
+  /* Wait in a loop to allow serial output to be observed */
+  for (;;) {
+    __BKPT(0);
+  }
 }
 
 /**
@@ -656,13 +667,12 @@ void vApplicationMallocFailedHook(void)
   */
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 {
-  (void) pcTaskName;
   (void) xTask;
-
-  /* Run time stack overflow checking is performed if
-     configCHECK_FOR_STACK_OVERFLOW is defined to 1 or 2.  This hook
-     function is called if a stack overflow is detected. */
-  Error_Handler();
+  /* Report stack overflow info then halt */
+  printf("vApplicationStackOverflowHook: Task '%s' overflowed stack\r\n", pcTaskName ? pcTaskName : "(unknown)");
+  for (;;) {
+    __BKPT(0);
+  }
 }
 
 /**

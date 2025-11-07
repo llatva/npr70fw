@@ -23,6 +23,7 @@
 #include "w5500_driver.h"
 #include "app_common.h"
 #include "config_flash.h"
+#include "task_radio_processing.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>  /* For atoi, atof */
@@ -206,6 +207,21 @@ static void ProcessCommand(const char *cmd) {
                      "ready> ",
                      (unsigned int)free_heap, (unsigned int)min_heap);
             len = strlen((char *)tx_data);
+        }
+        else if (strcmp(param1, "buffers") == 0) {
+            size_t free_heap = xPortGetFreeHeapSize();
+            len = snprintf((char *)tx_data, sizeof(tx_data), "Buffers (LID: ptr, last_used_ms):\r\n");
+            for (int i = 0; i < RADIO_ADDR_TABLE_SIZE && len < 350; i++) {
+                void *ptr = (void *)ethernet_buffer[i];
+                uint32_t age = 0;
+                if (buffer_last_used_ms[i] != 0) {
+                    uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+                    age = (now > buffer_last_used_ms[i]) ? (now - buffer_last_used_ms[i]) : 0;
+                }
+                len += snprintf((char *)tx_data + len, sizeof(tx_data) - len,
+                                "  [%d] %p  age=%lu ms\r\n", i, ptr, (unsigned long)age);
+            }
+            len += snprintf((char *)tx_data + len, sizeof(tx_data) - len, "Heap free: %u bytes\r\nready> ", (unsigned int)free_heap);
         }
         else if (strcmp(param1, "dhcp") == 0 || strcmp(param1, "DHCP_ARP") == 0) {
             len = snprintf((char *)tx_data, sizeof(tx_data),

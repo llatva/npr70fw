@@ -23,6 +23,7 @@
 #include "Eth_IPv4.h"
 #include "TDMA.h"
 #include "signaling.h"
+#include "Application/Tasks/task_radio_processing.h"
 
 #include "ext_SRAM2.h"
 
@@ -69,7 +70,7 @@ void FDDdown_RX_pckt_treat(unsigned char* in_data, int size) {
 }
 
 void radio_RX_FIFO_dequeue (W5500_chip* W5500) {
-	static unsigned char ethernet_buffer[radio_addr_table_size][1600]; 
+	// static unsigned char ethernet_buffer[radio_addr_table_size][1600];  // Removed: use lazy-allocated buffers from task_radio_processing
 	static int size_received[radio_addr_table_size]; 
 	static unsigned char prev_seg_counter[radio_addr_table_size];  
 	static unsigned char curr_pkt_counter[radio_addr_table_size];  
@@ -506,13 +507,17 @@ void TX_intern_FIFO_write(unsigned char* data, int size) {
 void ext_SRAM_write2(ext_SRAM_chip* loc_SPI, unsigned char* loc_data, unsigned int address, int size) {
 	//static unsigned char trash[350];
 	static unsigned char command[6] = {0x02, 0x00, 0x00, 0x00};
+	printf("SRAM: write2 CS low, addr=%lu, size=%d\r\n", (unsigned long)address, size);
 	loc_SPI->cs->write(0);
 	command[3] = address & 0xFF;
 	command[2] = (address & 0xFF00) >> 8;
 	command[1] = (address & 0xFF0000) >> 16;
+	printf("SRAM: write2 send cmd\r\n");
 	loc_SPI->spi_port->transfer_2 (command, 4, trash, 4);
+	printf("SRAM: write2 send data\r\n");
 	loc_SPI->spi_port->transfer_2 (loc_data, size, trash, size);
 	loc_SPI->cs->write(1);
+	printf("SRAM: write2 CS high\r\n");
 }
 
 void TX_ext_FIFO_write(unsigned char* data, int size) {
@@ -642,13 +647,17 @@ int TX_FIFO_full_withSRAM (int priority) {
 
 void ext_SRAM_read2(ext_SRAM_chip* loc_SPI, unsigned char* loc_data, unsigned int address, int size) {
 	static unsigned char command[6] = {0x03, 0x00, 0x00, 0x00};
+	printf("SRAM: read2 CS low, addr=%lu, size=%d\r\n", (unsigned long)address, size);
 	loc_SPI->cs->write(0);
 	command[3] = address & 0xFF;
 	command[2] = (address & 0xFF00) >> 8;
 	command[1] = (address & 0xFF0000) >> 16;
+	printf("SRAM: read2 send cmd\r\n");
 	loc_SPI->spi_port->transfer_2 (command, 4, trash, 4);
+	printf("SRAM: read2 get data\r\n");
 	loc_SPI->spi_port->transfer_2 (trash, size, loc_data, size);
 	loc_SPI->cs->write(1);
+	printf("SRAM: read2 CS high\r\n");
 }
 
 void ext_SRAM_periodic_call(void) {
@@ -704,7 +713,6 @@ void ext_SRAM_periodic_call(void) {
 	}
 }
 
-
 //void radio_flush_TX_FIFO(void) {
 //	TXPS_FIFO->WR_point = 0;
 //	TXPS_FIFO->RD_point = 0;
@@ -714,13 +722,21 @@ void ext_SRAM_periodic_call(void) {
 int ext_SRAM_detect(void) {
 	unsigned char data_1[4] = {0x3C, 0x4A, 0xF3, 0x12};
 	unsigned char data_2[4] = {0xFF, 0xFF, 0xFF, 0xFF};
-	int i; 
+	int i;
 	int sram_detected = 1;
+	printf("SRAM: detect entry\r\n");
+	printf("SRAM: SPI_SRAM_p=%p\r\n", (void*)SPI_SRAM_p);
+	if (SPI_SRAM_p) {
+		printf("SRAM: spi_port=%p, cs=%p\r\n", (void*)SPI_SRAM_p->spi_port, (void*)SPI_SRAM_p->cs);
+	}
+	printf("SRAM: calling write2\r\n");
 	ext_SRAM_write2(SPI_SRAM_p, data_1, 2345, 4);
+	printf("SRAM: calling read2\r\n");
 	ext_SRAM_read2(SPI_SRAM_p, data_2, 2345, 4);
 	for (i=0; i<4; i++) {
 		if (data_2[i] != data_1[i]) {sram_detected = 0;}
 	}
+	printf("SRAM: detect done, result=%d\r\n", sram_detected);
 	return sram_detected;
 }
 
