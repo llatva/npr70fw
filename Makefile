@@ -50,6 +50,11 @@ C_SOURCES += Application/Tasks/task_radio_isr.c
 C_SOURCES += Application/Tasks/task_radio_processing.c
 C_SOURCES += Application/Tasks/task_tdma.c
 
+# Combined radio task replaces separate ISR + processing units
+C_SOURCES := $(filter-out Application/Tasks/task_radio_isr.c,$(C_SOURCES))
+C_SOURCES := $(filter-out Application/Tasks/task_radio_processing.c,$(C_SOURCES))
+C_SOURCES += Application/Tasks/task_radio_combined.c
+
 C_SOURCES += Application/Tasks/task_ethernet_rx.c
 C_SOURCES += Application/Tasks/task_ethernet_tx.c
 C_SOURCES += Application/Tasks/task_signaling.c

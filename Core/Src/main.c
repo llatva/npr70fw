@@ -29,8 +29,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 #include "app_common.h"
-#include "task_radio_isr.h"
-#include "task_radio_processing.h"
+#include "task_radio_combined.h"
 #include "task_tdma.h"
 #include "task_signaling.h"
 #include "task_ethernet.h"
@@ -64,8 +63,8 @@ ExtSRAM_Context_t hsram;  /* Non-static so it can be accessed from app_common.c 
 
 /* FreeRTOS handles - will be initialized in main() */
 // Task handles
-TaskHandle_t xRadioISRHandlerTask = NULL;
-TaskHandle_t xRadioProcessingTask = NULL;
+TaskHandle_t xRadioISRHandlerTask = NULL; /* legacy handle kept for Watchdog naming */
+TaskHandle_t xRadioProcessingTask = NULL; /* legacy handle kept for Watchdog naming */
 TaskHandle_t xTDMATask = NULL;
 TaskHandle_t xSignalingTask = NULL;
 TaskHandle_t xEthernetRxTask = NULL;
@@ -98,8 +97,7 @@ static void MX_TIM2_Init(void);
 static void MX_USART2_UART_Init(void);
 
 /* Task function prototypes - Implemented in Application/Tasks/ */
-extern void vRadioISRHandlerTask(void *pvParameters);
-extern void vRadioProcessingTask(void *pvParameters);
+extern void vRadioTask(void *pvParameters);
 extern void vTDMATask(void *pvParameters);
 extern void vSignalingTask(void *pvParameters);
 extern void vEthernetRxTask(void *pvParameters);
@@ -317,10 +315,7 @@ int main(void)
   printf("Boot: Initializing task modules...\r\n");
   
   printf("  - RadioISRTask_Init...\r\n");
-  RadioISRTask_Init(&hsi4463);
-  
-  printf("  - RadioProcessingTask_Init...\r\n");
-  RadioProcessingTask_Init(&hw5500);
+  RadioTask_Init(&hsi4463, &hw5500);
   
   printf("  - TDMATask_Init...\r\n");
   TDMATask_Init(&hsi4463);
@@ -342,12 +337,8 @@ int main(void)
   printf("Boot: Creating FreeRTOS tasks...\r\n");
   
   /* Radio tasks - highest priority for timing-critical TDMA */
-  if (xTaskCreate(vRadioISRHandlerTask, "RadioISR", 160, NULL, PRIORITY_RADIO_ISR_HANDLER, &xRadioISRHandlerTask) != pdPASS) {
-    printf("FATAL: Failed to create RadioISR task!\r\n");
-    Error_Handler();
-  }
-  if (xTaskCreate(vRadioProcessingTask, "RadioProc", 160, NULL, PRIORITY_RADIO_PROCESS, &xRadioProcessingTask) != pdPASS) {
-    printf("FATAL: Failed to create RadioProc task!\r\n");
+  if (xTaskCreate(vRadioTask, "Radio", 240, NULL, PRIORITY_RADIO_ISR_HANDLER, &xRadioISRHandlerTask) != pdPASS) {
+    printf("FATAL: Failed to create Radio task!\r\n");
     Error_Handler();
   }
   if (xTaskCreate(vTDMATask, "TDMA", 160, NULL, PRIORITY_TDMA, &xTDMATask) != pdPASS) {
