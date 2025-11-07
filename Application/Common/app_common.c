@@ -1,0 +1,152 @@
+/**
+  ******************************************************************************
+  * @file    app_common.c
+  * @brief   Common application variables and functions
+  ******************************************************************************
+  */
+
+#include "app_common.h"
+#include "stm32l4xx_hal.h"
+
+/* External TIM2 handle (defined in main.c) */
+extern TIM_HandleTypeDef htim2;
+
+/* Global configuration structures */
+LAN_conf_T LAN_conf_applied = {
+    .LAN_modem_IP = 0xC0A80A01,      /* 192.168.10.1 */
+    .DHCP_range_start = 0xC0A80A10,  /* 192.168.10.16 */
+    .DHCP_range_size = 16,
+    .LAN_subnet_mask = 0xFFFFFF00,   /* 255.255.255.0 */
+    .LAN_def_route = 0,
+    .LAN_def_route_activ = 0,
+    .LAN_DNS_activ = 0,
+    .LAN_DNS_value = 0,
+    .DHCP_server_active = 0
+};
+
+RadioConfig_t CONF_radio = {
+    .modulation = 20,
+    .default_state_ON_OFF = 0,
+    .state_ON_OFF = 0,
+    .master_FDD = 0,
+    .long_preamble_duration_for_TA = 1000,
+    .addr_table_status = {0},
+    .addr_table_IP_begin = {0}
+};
+
+/* Radio address table (separate arrays) */
+char CONF_radio_my_callsign[16] = "MYCALL";
+char CONF_radio_master_callsign[16] = "MASTER";
+uint32_t CONF_radio_addr_table_IP_begin[RADIO_ADDR_TABLE_SIZE] = {0};
+uint32_t CONF_radio_addr_table_IP_size[RADIO_ADDR_TABLE_SIZE] = {0};
+char CONF_radio_addr_table_callsign[RADIO_ADDR_TABLE_SIZE][16] = {{0}};
+uint8_t CONF_radio_addr_table_status[RADIO_ADDR_TABLE_SIZE] = {0};
+uint32_t CONF_radio_addr_table_date[RADIO_ADDR_TABLE_SIZE] = {0};
+uint32_t CONF_radio_IP_start = 0xC0A80A00;  /* 192.168.10.0 */
+uint32_t CONF_radio_IP_size = 256;
+uint32_t CONF_radio_IP_size_requested = 16;
+uint8_t CONF_radio_static_IP_requested = 0;
+
+/* Radio signal quality arrays */
+volatile uint16_t radio_addr_table_RSSI[RADIO_ADDR_TABLE_SIZE] = {0};
+volatile uint16_t radio_addr_table_BER[RADIO_ADDR_TABLE_SIZE] = {0};
+
+/* Global state variables */
+volatile uint8_t is_TDMA_master = 0;
+volatile uint8_t is_SRAM_ext = 0;
+volatile uint8_t is_telnet_active = 0;
+volatile uint8_t my_client_radio_connexion_state = 0;
+uint8_t my_radio_client_ID = 0;  /* Default client ID */
+
+/* RX FIFO */
+uint8_t RX_FIFO_data[RX_FIFO_SIZE];
+volatile uint16_t RX_FIFO_WR_point = 0;
+volatile uint16_t RX_FIFO_RD_point = 0;
+volatile uint16_t RX_FIFO_last_received = 0;
+volatile uint16_t RX_size_remaining = 0;
+
+/* TDMA timing */
+volatile uint32_t TDMA_slave_last_master_top = 0;
+volatile int32_t TDMA_table_TA[RADIO_ADDR_TABLE_SIZE] = {0};
+
+/* Statistics */
+volatile uint32_t RSSI_total_stat = 0;
+volatile uint32_t RSSI_stat_pkt_nb = 0;
+volatile uint32_t RX_Eth_IPv4_counter = 0;
+volatile uint8_t connect_rejection_reason = 0;
+
+/* Temperature monitoring */
+volatile uint8_t G_need_temperature_check = 0;
+volatile uint8_t G_temperature_SI4463 = 0;
+
+/* Configuration parameters */
+int CONF_signaling_period = 3;              /* Default 3 seconds */
+uint32_t CONF_radio_timeout_small = 1000000; /* 1 second in microseconds */
+
+/* Downlink signal quality */
+volatile uint8_t downlink_RSSI = 0;
+volatile uint16_t downlink_BER = 0;
+volatile uint16_t G_downlink_RSSI = 0;
+volatile uint16_t G_downlink_BER = 0;
+
+/* Radio address table statistics */
+volatile uint16_t G_radio_addr_table_RSSI[RADIO_ADDR_TABLE_SIZE] = {0};
+volatile uint16_t G_radio_addr_table_BER[RADIO_ADDR_TABLE_SIZE] = {0};
+
+/* TIM2 microsecond timer overflow counter */
+volatile uint32_t g_microsecond_timer_overflow = 0;
+
+/**
+ * @brief Get current microsecond timestamp from TIM2
+ * @return Current timestamp in microseconds (48-bit resolution)
+ */
+uint32_t GetMicrosecondTimer(void)
+{
+    uint32_t timer_value;
+    uint32_t overflow_count;
+    
+    /* Read atomically */
+    taskENTER_CRITICAL();
+    timer_value = __HAL_TIM_GET_COUNTER(&htim2);
+    overflow_count = g_microsecond_timer_overflow;
+    taskEXIT_CRITICAL();
+    
+    /* Combine 16-bit overflow counter and 16-bit timer */
+    return (overflow_count << 16) | (timer_value & 0xFFFF);
+}
+
+/**
+ * @brief Initialize global variables
+ */
+void InitializeGlobalVariables(void)
+{
+    int i;
+    
+    /* Reset FIFO pointers */
+    RX_FIFO_WR_point = 0;
+    RX_FIFO_RD_point = 0;
+    RX_FIFO_last_received = 0;
+    RX_size_remaining = 0;
+    
+    /* Clear FIFO data */
+    memset((void*)RX_FIFO_data, 0, RX_FIFO_SIZE);
+    
+    /* Reset radio address table */
+    for (i = 0; i < RADIO_ADDR_TABLE_SIZE; i++) {
+        CONF_radio.addr_table_status[i] = 0;
+        CONF_radio.addr_table_IP_begin[i] = 0;
+        TDMA_table_TA[i] = 0;
+    }
+    
+    /* Reset statistics */
+    RSSI_total_stat = 0;
+    RSSI_stat_pkt_nb = 0;
+    RX_Eth_IPv4_counter = 0;
+    
+    /* Reset state variables */
+    is_TDMA_master = 0;
+    is_telnet_active = 0;
+    my_client_radio_connexion_state = 0;
+    G_need_temperature_check = 0;
+    TDMA_slave_last_master_top = 0;
+}
