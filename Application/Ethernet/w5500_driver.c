@@ -376,4 +376,99 @@ static void W5500_SPI_Unlock(W5500_Context_t *ctx)
     xSemaphoreGive(ctx->spi_mutex);
 }
 
+/**
+  * @brief  Initialize UDP socket
+  */
+HAL_StatusTypeDef W5500_InitUDPSocket(W5500_Context_t *ctx, uint8_t sock, uint16_t port)
+{
+    if (ctx == NULL || sock > 7) {
+        return HAL_ERROR;
+    }
+    
+    uint8_t block = W5500_SOCKET_REG_BLOCK(sock);
+    
+    /* Set socket mode to UDP */
+    W5500_WriteByte(ctx, W5500_Sn_MR, block, W5500_Sn_MR_UDP);
+    
+    /* Set source port */
+    W5500_WriteByte(ctx, W5500_Sn_PORT0, block, (port >> 8) & 0xFF);
+    W5500_WriteByte(ctx, W5500_Sn_PORT0 + 1, block, port & 0xFF);
+    
+    /* Set buffer sizes (2KB TX, 2KB RX) */
+    W5500_WriteByte(ctx, W5500_Sn_TXBUF_SIZE, block, 0x02);
+    W5500_WriteByte(ctx, W5500_Sn_RXBUF_SIZE, block, 0x02);
+    
+    /* Open socket */
+    W5500_WriteByte(ctx, W5500_Sn_CR, block, W5500_Sn_CR_OPEN);
+    
+    /* Wait for socket to open */
+    vTaskDelay(pdMS_TO_TICKS(10));
+    
+    return HAL_OK;
+}
+
+/**
+  * @brief  Initialize TCP server socket
+  */
+HAL_StatusTypeDef W5500_InitTCPServerSocket(W5500_Context_t *ctx, uint8_t sock, uint16_t port)
+{
+    if (ctx == NULL || sock > 7) {
+        return HAL_ERROR;
+    }
+    
+    uint8_t block = W5500_SOCKET_REG_BLOCK(sock);
+    
+    /* Set socket mode to TCP */
+    W5500_WriteByte(ctx, W5500_Sn_MR, block, W5500_Sn_MR_TCP);
+    
+    /* Set source port */
+    W5500_WriteByte(ctx, W5500_Sn_PORT0, block, (port >> 8) & 0xFF);
+    W5500_WriteByte(ctx, W5500_Sn_PORT0 + 1, block, port & 0xFF);
+    
+    /* Set buffer sizes (2KB TX, 2KB RX) */
+    W5500_WriteByte(ctx, W5500_Sn_TXBUF_SIZE, block, 0x02);
+    W5500_WriteByte(ctx, W5500_Sn_RXBUF_SIZE, block, 0x02);
+    
+    /* Open socket */
+    W5500_WriteByte(ctx, W5500_Sn_CR, block, W5500_Sn_CR_OPEN);
+    
+    /* Wait for socket to initialize */
+    vTaskDelay(pdMS_TO_TICKS(10));
+    
+    /* Put socket in listen mode */
+    W5500_WriteByte(ctx, W5500_Sn_CR, block, W5500_Sn_CR_LISTEN);
+    
+    /* Wait for listen state */
+    vTaskDelay(pdMS_TO_TICKS(10));
+    
+    return HAL_OK;
+}
+
+/**
+  * @brief  Configure all application sockets
+  */
+HAL_StatusTypeDef W5500_ConfigureAppSockets(W5500_Context_t *ctx)
+{
+    if (ctx == NULL) {
+        return HAL_ERROR;
+    }
+    
+    /* Socket 0: DHCP Server (UDP port 67) */
+    if (W5500_InitUDPSocket(ctx, W5500_SOCK_DHCP, 67) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    
+    /* Socket 3: SNMP Agent (UDP port 161) */
+    if (W5500_InitUDPSocket(ctx, W5500_SOCK_SNMP, 161) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    
+    /* Socket 4: Telnet Server (TCP port 23) */
+    if (W5500_InitTCPServerSocket(ctx, W5500_SOCK_TELNET, 23) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    
+    return HAL_OK;
+}
+
 /************************ (C) COPYRIGHT NPR-70 FreeRTOS Port *****END OF FILE****/

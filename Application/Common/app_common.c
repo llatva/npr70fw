@@ -82,6 +82,8 @@ volatile uint8_t G_temperature_SI4463 = 0;
 /* Configuration parameters */
 int CONF_signaling_period = 3;              /* Default 3 seconds */
 uint32_t CONF_radio_timeout_small = 1000000; /* 1 second in microseconds */
+uint8_t CONF_radio_network_ID = 0;          /* Default network ID 0 */
+uint16_t CONF_frequency_HD = 17000;         /* Default 437.000 MHz (17MHz offset from 420MHz) */
 
 /* Downlink signal quality */
 volatile uint8_t downlink_RSSI = 0;

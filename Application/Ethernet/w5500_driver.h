@@ -253,6 +253,31 @@ uint8_t W5500_GetSocketStatus(W5500_Context_t *ctx, uint8_t sock);
   */
 HAL_StatusTypeDef W5500_PhyReset(W5500_Context_t *ctx);
 
+/**
+  * @brief  Initialize UDP socket
+  * @param  ctx: Pointer to W5500 context
+  * @param  sock: Socket number (0-7)
+  * @param  port: Local port number
+  * @retval HAL status
+  */
+HAL_StatusTypeDef W5500_InitUDPSocket(W5500_Context_t *ctx, uint8_t sock, uint16_t port);
+
+/**
+  * @brief  Initialize TCP server socket
+  * @param  ctx: Pointer to W5500 context
+  * @param  sock: Socket number (0-7)
+  * @param  port: Local port number
+  * @retval HAL status
+  */
+HAL_StatusTypeDef W5500_InitTCPServerSocket(W5500_Context_t *ctx, uint8_t sock, uint16_t port);
+
+/**
+  * @brief  Configure all application sockets (DHCP, SNMP, Telnet)
+  * @param  ctx: Pointer to W5500 context
+  * @retval HAL status
+  */
+HAL_StatusTypeDef W5500_ConfigureAppSockets(W5500_Context_t *ctx);
+
 #ifdef __cplusplus
 }
 #endif

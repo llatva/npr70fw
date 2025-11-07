@@ -164,6 +164,8 @@ extern volatile uint8_t G_temperature_SI4463;
 /* Configuration parameters */
 extern int CONF_signaling_period;           /* Signaling period in seconds */
 extern uint32_t CONF_radio_timeout_small;   /* Small timeout for radio in microseconds */
+extern uint8_t CONF_radio_network_ID;       /* Radio network ID (0-255) */
+extern uint16_t CONF_frequency_HD;          /* Radio frequency in kHz offset from band start */
 
 /* Downlink signal quality */
 extern volatile uint8_t downlink_RSSI;

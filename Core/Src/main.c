@@ -180,6 +180,11 @@ int main(void)
     Error_Handler();
   }
   
+  /* Configure W5500 application sockets (DHCP, SNMP, Telnet) */
+  if (W5500_ConfigureAppSockets(&hw5500) != HAL_OK) {
+    Error_Handler();
+  }
+  
   if (SI4463_Init(&hsi4463) != HAL_OK) {
     Error_Handler();
   }
