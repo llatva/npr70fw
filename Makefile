@@ -9,6 +9,8 @@ BUILD_DIR = build
 
 C_SOURCES = Core/Src/main.c
 C_SOURCES += Core/Src/system_stm32l4xx.c
+C_SOURCES += Core/Src/syscalls.c
+C_SOURCES += Core/Src/stm32l4xx_hal_msp.c
 C_SOURCES += Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal.c
 C_SOURCES += Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_cortex.c
 C_SOURCES += Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_rcc.c

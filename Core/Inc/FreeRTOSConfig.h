@@ -136,7 +136,13 @@ extern uint32_t ulGetRunTimeCounterValue(void);
  * Cortex-M specific definitions
  *----------------------------------------------------------*/
 /* Ensure Cortex-M port functions are available */
-#define configASSERT(x) if((x) == 0) { taskDISABLE_INTERRUPTS(); for(;;); }
+/* Enhanced configASSERT with printf for better debugging */
+#include <stdio.h>
+extern void Error_Handler(void);
+#define configASSERT(x) if((x) == 0) { \
+    printf("\r\n*** ASSERT FAILED: %s:%d ***\r\n", __FILE__, __LINE__); \
+    Error_Handler(); \
+}
 
 /* Definitions for backward compatibility with older FreeRTOS versions */
 #define configUSE_APPLICATION_TASK_TAG          0

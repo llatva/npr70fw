@@ -14,6 +14,7 @@
 IWDG_HandleTypeDef hiwdg;
 static TaskWatchdogEntry_t task_watchdog_table[MAX_MONITORED_TASKS];
 static uint8_t task_count = 0;
+static uint8_t iwdg_started = 0;  /* Flag to track if IWDG has been started */
 
 /* Private functions ---------------------------------------------------------*/
 
@@ -50,9 +51,15 @@ HAL_StatusTypeDef Watchdog_Init(void)
     /* Clear task table */
     memset(task_watchdog_table, 0, sizeof(task_watchdog_table));
     task_count = 0;
+    iwdg_started = 0;
     
-    /* Initialize hardware watchdog */
-    MX_IWDG_Init();
+    /* Configure IWDG but DON'T start it yet - will be started after scheduler */
+    hiwdg.Instance = IWDG;
+    hiwdg.Init.Prescaler = IWDG_PRESCALER_32;
+    hiwdg.Init.Reload = 4095;  /* Maximum value for ~4 second timeout */
+    hiwdg.Init.Window = IWDG_WINDOW_DISABLE;
+    
+    /* Note: IWDG will be started by first call to Watchdog_Refresh() */
     
     return HAL_OK;
 }
@@ -62,7 +69,17 @@ HAL_StatusTypeDef Watchdog_Init(void)
  */
 void Watchdog_Refresh(void)
 {
-    HAL_IWDG_Refresh(&hiwdg);
+    /* Start IWDG on first refresh (after scheduler has started) */
+    if (!iwdg_started) {
+        if (HAL_IWDG_Init(&hiwdg) == HAL_OK) {
+            iwdg_started = 1;
+        }
+    }
+    
+    /* Refresh watchdog if it's running */
+    if (iwdg_started) {
+        HAL_IWDG_Refresh(&hiwdg);
+    }
 }
 
 /**

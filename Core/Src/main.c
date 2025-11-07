@@ -43,6 +43,7 @@
 #include "ext_sram_driver.h"
 #include "config_flash.h"
 #include "watchdog.h"
+#include <stdio.h>
 
 /* Private typedef -----------------------------------------------------------*/
 
@@ -166,36 +167,87 @@ int main(void)
   MX_TIM2_Init();
   MX_USART2_UART_Init();
 
+  /* Print boot banner - matching original NPR-70 style */
+  printf("\r\n\r\nNPR-70, FreeRTOS FW v1.0\r\n");
+  printf("Build: %s %s\r\n", __DATE__, __TIME__);
+  printf("Serial: 921600 baud, 8N1\r\n");
+  printf("=================================\r\n");
+  printf("Boot: HAL Init OK\r\n");
+
   /* Start TIM2 for microsecond timing */
   HAL_TIM_Base_Start_IT(&htim2);
+  printf("Boot: TIM2 started\r\n");
 
   /* Initialize watchdog (hardware only, task monitoring starts after scheduler) */
   Watchdog_Init();
+  printf("Boot: Watchdog initialized\r\n");
+
+  /* Initialize is_SRAM_ext to default before use */
+  is_SRAM_ext = 0;  /* Default: use internal RAM */
 
   /* Initialize application globals (before FreeRTOS) */
   InitializeGlobalVariables();
+  printf("Boot: Global variables initialized\r\n");
 
   /* Create FreeRTOS synchronization primitives FIRST */
   /* Create Mutexes (needed for driver init) */
   xSPI1Mutex = xSemaphoreCreateMutex();
+  if (xSPI1Mutex == NULL) {
+    printf("FATAL: Failed to create SPI1 mutex!\r\n");
+    Error_Handler();
+  }
   xSPI3Mutex = xSemaphoreCreateMutex();
+  if (xSPI3Mutex == NULL) {
+    printf("FATAL: Failed to create SPI3 mutex!\r\n");
+    Error_Handler();
+  }
   xConfigMutex = xSemaphoreCreateMutex();
+  if (xConfigMutex == NULL) {
+    printf("FATAL: Failed to create Config mutex!\r\n");
+    Error_Handler();
+  }
+  printf("Boot: Mutexes created\r\n");
   
   /* Create Queues */
   xRadioISRQueue = xQueueCreate(RADIO_ISR_QUEUE_SIZE, sizeof(RadioISREvent_t));
+  if (xRadioISRQueue == NULL) {
+    printf("FATAL: Failed to create RadioISR queue!\r\n");
+    Error_Handler();
+  }
   xRadioTxQueue = xQueueCreate(RADIO_TX_QUEUE_SIZE, sizeof(RadioRxPacket_t));
+  if (xRadioTxQueue == NULL) {
+    printf("FATAL: Failed to create RadioTx queue!\r\n");
+    Error_Handler();
+  }
   xEthernetRxQueue = xQueueCreate(ETHERNET_RX_QUEUE_SIZE, sizeof(EthernetPacket_t));
+  if (xEthernetRxQueue == NULL) {
+    printf("FATAL: Failed to create EthernetRx queue!\r\n");
+    Error_Handler();
+  }
   xEthernetTxQueue = xQueueCreate(ETHERNET_TX_QUEUE_SIZE, sizeof(EthernetPacket_t));
+  if (xEthernetTxQueue == NULL) {
+    printf("FATAL: Failed to create EthernetTx queue!\r\n");
+    Error_Handler();
+  }
+  printf("Boot: Queues created\r\n");
   
   /* Create Event Groups */
   xSystemEvents = xEventGroupCreate();
+  if (xSystemEvents == NULL) {
+    printf("FATAL: Failed to create event group!\r\n");
+    Error_Handler();
+  }
+  printf("Boot: Event groups created\r\n");
 
   /* Initialize and load configuration from flash (before scheduler starts) */
   Config_Flash_Init();
+  printf("Boot: Config flash initialized\r\n");
   if (Config_Flash_Load() == HAL_OK) {
     /* Configuration loaded successfully from flash */
+    printf("Boot: Config loaded from flash\r\n");
   } else {
     /* Using factory defaults (first boot or corrupted config) */
+    printf("Boot: Using factory defaults\r\n");
   }
 
   /* SI4463 Radio configuration */
@@ -223,23 +275,43 @@ int main(void)
   hsram.spi_mutex = xSPI3Mutex;
 
   /* Initialize hardware drivers (now mutexes exist) */
-  if (W5500_Init(&hw5500) != HAL_OK) {
-    Error_Handler();
+  /* Note: Hardware may not be present - continue boot even if init fails */
+  printf("Boot: Initializing W5500...\r\n");
+  HAL_StatusTypeDef w5500_status = W5500_Init(&hw5500);
+  if (w5500_status != HAL_OK) {
+    printf("WARNING: W5500 init failed (not present?)\r\n");
+    /* Don't call Error_Handler - allow boot to continue for debugging */
+  } else {
+    printf("Boot: W5500 OK\r\n");
+    
+    /* Configure W5500 application sockets (DHCP, SNMP, Telnet) */
+    if (W5500_ConfigureAppSockets(&hw5500) != HAL_OK) {
+      printf("WARNING: W5500 socket config failed!\r\n");
+    } else {
+      printf("Boot: W5500 sockets configured\r\n");
+    }
   }
   
-  /* Configure W5500 application sockets (DHCP, SNMP, Telnet) */
-  if (W5500_ConfigureAppSockets(&hw5500) != HAL_OK) {
-    Error_Handler();
-  }
-  
-  if (SI4463_Init(&hsi4463) != HAL_OK) {
-    Error_Handler();
+  printf("Boot: Initializing SI4463...\r\n");
+  HAL_StatusTypeDef si4463_status = SI4463_Init(&hsi4463);
+  if (si4463_status != HAL_OK) {
+    printf("WARNING: SI4463 init failed (not present?)\r\n");
+    /* Don't call Error_Handler - allow boot to continue for debugging */
+  } else {
+    printf("Boot: SI4463 OK\r\n");
   }
   
   /* Initialize external SRAM if present */
+  printf("Boot: Checking for external SRAM...\r\n");
   is_SRAM_ext = (ExtSRAM_Init(&hsram) == HAL_OK) ? 1 : 0;
+  if (is_SRAM_ext) {
+    printf("Boot: External SRAM detected and initialized\r\n");
+  } else {
+    printf("Boot: No external SRAM, using internal RAM\r\n");
+  }
   
   /* Initialize task-specific modules */
+  printf("Boot: Initializing task modules...\r\n");
   RadioISRTask_Init(&hsi4463);
   RadioProcessingTask_Init(&hw5500);
   TDMATask_Init(&hsi4463);
@@ -249,28 +321,62 @@ int main(void)
   DHCPARPTask_Init(&hw5500);
   SNMPTask_Init(&hw5500);
   TelnetTask_Init(&hw5500);
+  printf("Boot: Task modules initialized\r\n");
 
   /* Create FreeRTOS tasks */
+  printf("Boot: Creating FreeRTOS tasks...\r\n");
   
   /* Radio tasks - highest priority for timing-critical TDMA */
-  xTaskCreate(vRadioISRHandlerTask, "RadioISR", 448, NULL, PRIORITY_RADIO_ISR_HANDLER, &xRadioISRHandlerTask);
-  xTaskCreate(vRadioProcessingTask, "RadioProc", 448, NULL, PRIORITY_RADIO_PROCESS, &xRadioProcessingTask);
-  xTaskCreate(vTDMATask, "TDMA", 448, NULL, PRIORITY_TDMA, &xTDMATask);
-  xTaskCreate(vSignalingTask, "Signaling", 320, NULL, PRIORITY_SIGNALING, &xSignalingTask);
+  if (xTaskCreate(vRadioISRHandlerTask, "RadioISR", 448, NULL, PRIORITY_RADIO_ISR_HANDLER, &xRadioISRHandlerTask) != pdPASS) {
+    printf("FATAL: Failed to create RadioISR task!\r\n");
+    Error_Handler();
+  }
+  if (xTaskCreate(vRadioProcessingTask, "RadioProc", 448, NULL, PRIORITY_RADIO_PROCESS, &xRadioProcessingTask) != pdPASS) {
+    printf("FATAL: Failed to create RadioProc task!\r\n");
+    Error_Handler();
+  }
+  if (xTaskCreate(vTDMATask, "TDMA", 448, NULL, PRIORITY_TDMA, &xTDMATask) != pdPASS) {
+    printf("FATAL: Failed to create TDMA task!\r\n");
+    Error_Handler();
+  }
+  if (xTaskCreate(vSignalingTask, "Signaling", 320, NULL, PRIORITY_SIGNALING, &xSignalingTask) != pdPASS) {
+    printf("FATAL: Failed to create Signaling task!\r\n");
+    Error_Handler();
+  }
   
   /* Ethernet tasks - medium priority */
-  xTaskCreate(vEthernetRxTask, "EthRx", 448, NULL, PRIORITY_ETH_RX, &xEthernetRxTask);
-  xTaskCreate(vEthernetTxTask, "EthTx", 320, NULL, PRIORITY_ETH_TX, &xEthernetTxTask);
+  if (xTaskCreate(vEthernetRxTask, "EthRx", 448, NULL, PRIORITY_ETH_RX, &xEthernetRxTask) != pdPASS) {
+    printf("FATAL: Failed to create EthRx task!\r\n");
+    Error_Handler();
+  }
+  if (xTaskCreate(vEthernetTxTask, "EthTx", 320, NULL, PRIORITY_ETH_TX, &xEthernetTxTask) != pdPASS) {
+    printf("FATAL: Failed to create EthTx task!\r\n");
+    Error_Handler();
+  }
   
   /* Service tasks - lower priority (stubs need minimal stack) */
-  xTaskCreate(vDHCPARPTask, "DHCP_ARP", 224, NULL, PRIORITY_DHCP_ARP, &xDHCPARPTask);
-  xTaskCreate(vSNMPTask, "SNMP", 320, NULL, PRIORITY_SNMP, &xSNMPTask);
-  xTaskCreate(vTelnetTask, "Telnet", 224, NULL, PRIORITY_TELNET, &xTelnetTask);
+  if (xTaskCreate(vDHCPARPTask, "DHCP_ARP", 224, NULL, PRIORITY_DHCP_ARP, &xDHCPARPTask) != pdPASS) {
+    printf("FATAL: Failed to create DHCP_ARP task!\r\n");
+    Error_Handler();
+  }
+  if (xTaskCreate(vSNMPTask, "SNMP", 320, NULL, PRIORITY_SNMP, &xSNMPTask) != pdPASS) {
+    printf("FATAL: Failed to create SNMP task!\r\n");
+    Error_Handler();
+  }
+  if (xTaskCreate(vTelnetTask, "Telnet", 224, NULL, PRIORITY_TELNET, &xTelnetTask) != pdPASS) {
+    printf("FATAL: Failed to create Telnet task!\r\n");
+    Error_Handler();
+  }
   
   /* Watchdog task - lowest priority, runs periodically */
-  xTaskCreate(vWatchdogTask, "Watchdog", 128, NULL, tskIDLE_PRIORITY + 1, &xWatchdogTask);
+  if (xTaskCreate(vWatchdogTask, "Watchdog", 128, NULL, tskIDLE_PRIORITY + 1, &xWatchdogTask) != pdPASS) {
+    printf("FATAL: Failed to create Watchdog task!\r\n");
+    Error_Handler();
+  }
+  printf("Boot: All tasks created successfully\r\n");
 
   /* Start scheduler */
+  printf("Boot: Starting FreeRTOS scheduler...\r\n\r\n");
   vTaskStartScheduler();
 
   /* We should never get here as control is now taken by the scheduler */
@@ -421,14 +527,14 @@ static void MX_TIM2_Init(void)
 }
 
 /**
-  * @brief USART2 Initialization Function (Debug UART)
+  * @brief USART2 Initialization Function (Serial CLI - 921600 baud like original mbed code)
   * @param None
   * @retval None
   */
 static void MX_USART2_UART_Init(void)
 {
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
+  huart2.Init.BaudRate = 921600;  /* Same as original NPR-70 mbed firmware */
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -627,6 +733,18 @@ void Error_Handler(void)
 {
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
+  
+  /* Ensure GPIO clocks are enabled for LED (safe to call multiple times) */
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  
+  /* Configure LED pin if not already done */
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitStruct.Pin = LED_RX_PIN;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LED_RX_PORT, &GPIO_InitStruct);
+  
   while (1)
   {
     /* Toggle LED to indicate error */
