@@ -151,21 +151,21 @@ static void ProcessRxInterrupt(uint32_t timestamp)
                     
                     /* Store packet header in FIFO */
                     taskENTER_CRITICAL();
-                    RX_FIFO_data[RX_FIFO_WR_point & RX_FIFO_MASK] = RX_timer & 0xFF;
+                    RX_FIFO_WriteByte(RX_FIFO_WR_point & RX_FIFO_MASK, RX_timer & 0xFF);
                     RX_FIFO_WR_point++;
-                    RX_FIFO_data[RX_FIFO_WR_point & RX_FIFO_MASK] = (RX_timer >> 8) & 0xFF;
+                    RX_FIFO_WriteByte(RX_FIFO_WR_point & RX_FIFO_MASK, (RX_timer >> 8) & 0xFF);
                     RX_FIFO_WR_point++;
-                    RX_FIFO_data[RX_FIFO_WR_point & RX_FIFO_MASK] = (RX_timer >> 16) & 0xFF;
+                    RX_FIFO_WriteByte(RX_FIFO_WR_point & RX_FIFO_MASK, (RX_timer >> 16) & 0xFF);
                     RX_FIFO_WR_point++;
-                    RX_FIFO_data[RX_FIFO_WR_point & RX_FIFO_MASK] = RSSI;
+                    RX_FIFO_WriteByte(RX_FIFO_WR_point & RX_FIFO_MASK, RSSI);
                     RX_FIFO_WR_point++;
-                    RX_FIFO_data[RX_FIFO_WR_point & RX_FIFO_MASK] = rx_resp[1];  /* Size */
+                    RX_FIFO_WriteByte(RX_FIFO_WR_point & RX_FIFO_MASK, rx_resp[1]);  /* Size */
                     RX_FIFO_WR_point++;
                     
                     /* Read packet data from FIFO */
                     for (uint16_t i = 0; i < size_to_read; i++) {
                         /* This should use SI4463_ReadRxFifo but simplified here */
-                        RX_FIFO_data[RX_FIFO_WR_point & RX_FIFO_MASK] = 0;  /* Placeholder */
+                        RX_FIFO_WriteByte(RX_FIFO_WR_point & RX_FIFO_MASK, 0);  /* Placeholder */
                         RX_FIFO_WR_point++;
                     }
                     
@@ -192,7 +192,7 @@ static void ProcessRxInterrupt(uint32_t timestamp)
                 /* Read remaining data */
                 taskENTER_CRITICAL();
                 for (uint16_t i = 0; i < size_to_read; i++) {
-                    RX_FIFO_data[RX_FIFO_WR_point & RX_FIFO_MASK] = 0;  /* Placeholder */
+                    RX_FIFO_WriteByte(RX_FIFO_WR_point & RX_FIFO_MASK, 0);  /* Placeholder */
                     RX_FIFO_WR_point++;
                 }
                 

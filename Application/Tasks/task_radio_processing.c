@@ -128,30 +128,30 @@ void vRadioProcessingTask(void *argument)
             /* Read packet header from FIFO (5 bytes: 3-byte timer, 1-byte RSSI, 1-byte length) */
             taskENTER_CRITICAL();
             
-            frame_timer = RX_FIFO_data[RX_FIFO_RD_point & RX_FIFO_MASK];
+            frame_timer = RX_FIFO_ReadByte(RX_FIFO_RD_point & RX_FIFO_MASK);
             RX_FIFO_RD_point++;
-            frame_timer |= (RX_FIFO_data[RX_FIFO_RD_point & RX_FIFO_MASK] << 8);
+            frame_timer |= (RX_FIFO_ReadByte(RX_FIFO_RD_point & RX_FIFO_MASK) << 8);
             RX_FIFO_RD_point++;
-            frame_timer |= (RX_FIFO_data[RX_FIFO_RD_point & RX_FIFO_MASK] << 16);
-            RX_FIFO_RD_point++;
-            
-            RSSI = RX_FIFO_data[RX_FIFO_RD_point & RX_FIFO_MASK];
+            frame_timer |= (RX_FIFO_ReadByte(RX_FIFO_RD_point & RX_FIFO_MASK) << 16);
             RX_FIFO_RD_point++;
             
-            rframe_length = RX_FIFO_data[RX_FIFO_RD_point & RX_FIFO_MASK];
+            RSSI = RX_FIFO_ReadByte(RX_FIFO_RD_point & RX_FIFO_MASK);
+            RX_FIFO_RD_point++;
+            
+            rframe_length = RX_FIFO_ReadByte(RX_FIFO_RD_point & RX_FIFO_MASK);
             RX_FIFO_RD_point++;
             
             /* Read TDMA byte and peek at client/protocol bytes */
-            tdma_byte = RX_FIFO_data[RX_FIFO_RD_point & RX_FIFO_MASK];
+            tdma_byte = RX_FIFO_ReadByte(RX_FIFO_RD_point & RX_FIFO_MASK);
             RX_FIFO_RD_point++;
             
-            client_byte = RX_FIFO_data[RX_FIFO_RD_point & RX_FIFO_MASK];
-            protocol_byte = RX_FIFO_data[(RX_FIFO_RD_point + 1) & RX_FIFO_MASK];
+            client_byte = RX_FIFO_ReadByte(RX_FIFO_RD_point & RX_FIFO_MASK);
+            protocol_byte = RX_FIFO_ReadByte((RX_FIFO_RD_point + 1) & RX_FIFO_MASK);
             
             /* Read packet data from FIFO */
             size_w_FEC = rframe_length - 1;  /* Subtract TDMA byte */
             for (uint16_t i = 0; i < size_w_FEC && i < sizeof(data_RX); i++) {
-                data_RX[i] = RX_FIFO_data[RX_FIFO_RD_point & RX_FIFO_MASK];
+                data_RX[i] = RX_FIFO_ReadByte(RX_FIFO_RD_point & RX_FIFO_MASK);
                 RX_FIFO_RD_point++;
             }
             

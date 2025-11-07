@@ -7,9 +7,11 @@
 
 #include "app_common.h"
 #include "stm32l4xx_hal.h"
+#include "ext_sram_driver.h"
 
-/* External TIM2 handle (defined in main.c) */
+/* External handles (defined in main.c) */
 extern TIM_HandleTypeDef htim2;
+extern ExtSRAM_Context_t hsram;
 
 /* Global configuration structures */
 LAN_conf_T LAN_conf_applied = {
@@ -130,8 +132,17 @@ void InitializeGlobalVariables(void)
     RX_FIFO_last_received = 0;
     RX_size_remaining = 0;
     
-    /* Clear FIFO data */
-    memset((void*)RX_FIFO_data, 0, RX_FIFO_SIZE);
+    /* Clear FIFO data (internal RAM or external SRAM) */
+    if (is_SRAM_ext) {
+        /* Clear external SRAM RX FIFO area */
+        uint8_t zero_buf[256] = {0};
+        for (uint32_t addr = 0; addr < RX_FIFO_SIZE; addr += 256) {
+            ExtSRAM_Write(&hsram, zero_buf, SRAM_RX_FIFO_BASE_ADDR + addr, 256);
+        }
+    } else {
+        /* Clear internal RAM */
+        memset((void*)RX_FIFO_data, 0, RX_FIFO_SIZE);
+    }
     
     /* Reset radio address table */
     for (i = 0; i < RADIO_ADDR_TABLE_SIZE; i++) {
@@ -152,3 +163,59 @@ void InitializeGlobalVariables(void)
     G_need_temperature_check = 0;
     TDMA_slave_last_master_top = 0;
 }
+
+/**
+ * @brief Write data to RX FIFO (handles internal RAM or external SRAM)
+ */
+void RX_FIFO_Write(uint16_t offset, const uint8_t *data, uint16_t length) {
+    if (is_SRAM_ext) {
+        /* Write to external SRAM */
+        ExtSRAM_Write(&hsram, data, SRAM_RX_FIFO_BASE_ADDR + offset, length);
+    } else {
+        /* Write to internal RAM */
+        memcpy(&RX_FIFO_data[offset], data, length);
+    }
+}
+
+/**
+ * @brief Read data from RX FIFO (handles internal RAM or external SRAM)
+ */
+void RX_FIFO_Read(uint16_t offset, uint8_t *data, uint16_t length) {
+    if (is_SRAM_ext) {
+        /* Read from external SRAM */
+        ExtSRAM_Read(&hsram, data, SRAM_RX_FIFO_BASE_ADDR + offset, length);
+    } else {
+        /* Read from internal RAM */
+        memcpy(data, &RX_FIFO_data[offset], length);
+    }
+}
+
+/**
+ * @brief Write single byte to RX FIFO
+ */
+void RX_FIFO_WriteByte(uint16_t offset, uint8_t byte) {
+    if (is_SRAM_ext) {
+        /* Write to external SRAM */
+        ExtSRAM_Write(&hsram, &byte, SRAM_RX_FIFO_BASE_ADDR + offset, 1);
+    } else {
+        /* Write to internal RAM */
+        RX_FIFO_data[offset] = byte;
+    }
+}
+
+/**
+ * @brief Read single byte from RX FIFO
+ */
+uint8_t RX_FIFO_ReadByte(uint16_t offset) {
+    uint8_t byte;
+    if (is_SRAM_ext) {
+        /* Read from external SRAM */
+        ExtSRAM_Read(&hsram, &byte, SRAM_RX_FIFO_BASE_ADDR + offset, 1);
+    } else {
+        /* Read from internal RAM */
+        byte = RX_FIFO_data[offset];
+    }
+    return byte;
+}
+
+/************************ (C) COPYRIGHT NPR-70 FreeRTOS Port *****END OF FILE****/

@@ -16,6 +16,7 @@
 #include "task_tdma.h"
 #include "app_common.h"
 #include "si4463_driver.h"
+#include "watchdog.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -94,6 +95,9 @@ void vTDMATask(void *argument)
     printf("TDMA task started\r\n");
     
     for (;;) {
+        /* Check in with watchdog */
+        Watchdog_TaskCheckin(xTaskGetCurrentTaskHandle());
+        
         current_time = GetMicrosecondTimer();
         
         if (is_TDMA_master) {

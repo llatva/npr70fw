@@ -72,7 +72,7 @@
  *----------------------------------------------------------*/
 #define configSUPPORT_STATIC_ALLOCATION         1
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
-#define configTOTAL_HEAP_SIZE                   ((size_t)(13 * 1024 + 512))  /* 13.5KB heap (reduced for SNMP task) */
+#define configTOTAL_HEAP_SIZE                   ((size_t)(12 * 1024))  /* 12KB heap (reduced for watchdog task) */
 #define configAPPLICATION_ALLOCATED_HEAP        0
 
 /*-----------------------------------------------------------

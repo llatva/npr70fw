@@ -41,6 +41,8 @@
 #include "w5500_driver.h"
 #include "si4463_driver.h"
 #include "ext_sram_driver.h"
+#include "config_flash.h"
+#include "watchdog.h"
 
 /* Private typedef -----------------------------------------------------------*/
 
@@ -56,6 +58,11 @@ SPI_HandleTypeDef hspi3;  /* W5500 Ethernet + External SRAM (SPI3 on L432KC) */
 TIM_HandleTypeDef htim2;  /* TDMA timing (1 MHz) */
 UART_HandleTypeDef huart2; /* Debug UART */
 
+/* Driver handles (global so they can be accessed from other modules) */
+static SI4463_Context_t hsi4463;
+static W5500_Context_t hw5500;
+ExtSRAM_Context_t hsram;  /* Non-static so it can be accessed from app_common.c */
+
 /* FreeRTOS handles - will be initialized in main() */
 // Task handles
 TaskHandle_t xRadioISRHandlerTask = NULL;
@@ -67,6 +74,7 @@ TaskHandle_t xEthernetTxTask = NULL;
 TaskHandle_t xDHCPARPTask = NULL;
 TaskHandle_t xSNMPTask = NULL;
 TaskHandle_t xTelnetTask = NULL;
+TaskHandle_t xWatchdogTask = NULL;
 
 // Queue handles
 QueueHandle_t xRadioISRQueue = NULL;
@@ -101,6 +109,40 @@ extern void vDHCPARPTask(void *pvParameters);
 extern void vSNMPTask(void *pvParameters);
 extern void vTelnetTask(void *pvParameters);
 
+/* Watchdog task - local implementation */
+static void vWatchdogTask(void *pvParameters);
+
+/* Private user code ---------------------------------------------------------*/
+
+/**
+  * @brief Watchdog monitoring task
+  * @param pvParameters Not used
+  */
+static void vWatchdogTask(void *pvParameters)
+{
+    (void)pvParameters;
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    
+    /* Register all tasks for monitoring */
+    Watchdog_RegisterTask(xRadioISRHandlerTask, "RadioISR", 2000);
+    Watchdog_RegisterTask(xRadioProcessingTask, "RadioProc", 2000);
+    Watchdog_RegisterTask(xTDMATask, "TDMA", 2000);
+    Watchdog_RegisterTask(xSignalingTask, "Signaling", 5000);
+    Watchdog_RegisterTask(xEthernetRxTask, "EthRx", 2000);
+    Watchdog_RegisterTask(xEthernetTxTask, "EthTx", 2000);
+    
+    for (;;) {
+        /* Refresh hardware watchdog */
+        Watchdog_Refresh();
+        
+        /* Check task watchdogs (optional - could log or take action) */
+        Watchdog_CheckTasks();
+        
+        /* Run every 1 second */
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(1000));
+    }
+}
+
 /* Private user code ---------------------------------------------------------*/
 
 /**
@@ -127,14 +169,35 @@ int main(void)
   /* Start TIM2 for microsecond timing */
   HAL_TIM_Base_Start_IT(&htim2);
 
-  /* Initialize application globals */
+  /* Initialize watchdog (hardware only, task monitoring starts after scheduler) */
+  Watchdog_Init();
+
+  /* Initialize application globals (before FreeRTOS) */
   InitializeGlobalVariables();
 
-  /* Initialize driver handles */
-  static SI4463_Context_t hsi4463;
-  static W5500_Context_t hw5500;
-  static ExtSRAM_Context_t hsram;
+  /* Create FreeRTOS synchronization primitives FIRST */
+  /* Create Mutexes (needed for driver init) */
+  xSPI1Mutex = xSemaphoreCreateMutex();
+  xSPI3Mutex = xSemaphoreCreateMutex();
+  xConfigMutex = xSemaphoreCreateMutex();
   
+  /* Create Queues */
+  xRadioISRQueue = xQueueCreate(RADIO_ISR_QUEUE_SIZE, sizeof(RadioISREvent_t));
+  xRadioTxQueue = xQueueCreate(RADIO_TX_QUEUE_SIZE, sizeof(RadioRxPacket_t));
+  xEthernetRxQueue = xQueueCreate(ETHERNET_RX_QUEUE_SIZE, sizeof(EthernetPacket_t));
+  xEthernetTxQueue = xQueueCreate(ETHERNET_TX_QUEUE_SIZE, sizeof(EthernetPacket_t));
+  
+  /* Create Event Groups */
+  xSystemEvents = xEventGroupCreate();
+
+  /* Initialize and load configuration from flash (before scheduler starts) */
+  Config_Flash_Init();
+  if (Config_Flash_Load() == HAL_OK) {
+    /* Configuration loaded successfully from flash */
+  } else {
+    /* Using factory defaults (first boot or corrupted config) */
+  }
+
   /* SI4463 Radio configuration */
   hsi4463.hspi = &hspi1;
   hsi4463.cs_port = GPIOA;
@@ -159,23 +222,7 @@ int main(void)
   hsram.cs_pin = GPIO_PIN_0;
   hsram.spi_mutex = xSPI3Mutex;
 
-  /* Create FreeRTOS synchronization primitives */
-  
-  /* Create Queues */
-  xRadioISRQueue = xQueueCreate(RADIO_ISR_QUEUE_SIZE, sizeof(RadioISREvent_t));
-  xRadioTxQueue = xQueueCreate(RADIO_TX_QUEUE_SIZE, sizeof(RadioRxPacket_t));
-  xEthernetRxQueue = xQueueCreate(ETHERNET_RX_QUEUE_SIZE, sizeof(EthernetPacket_t));
-  xEthernetTxQueue = xQueueCreate(ETHERNET_TX_QUEUE_SIZE, sizeof(EthernetPacket_t));
-  
-  /* Create Mutexes */
-  xSPI1Mutex = xSemaphoreCreateMutex();
-  xSPI3Mutex = xSemaphoreCreateMutex();
-  xConfigMutex = xSemaphoreCreateMutex();
-  
-  /* Create Event Groups */
-  xSystemEvents = xEventGroupCreate();
-
-  /* Initialize hardware drivers */
+  /* Initialize hardware drivers (now mutexes exist) */
   if (W5500_Init(&hw5500) != HAL_OK) {
     Error_Handler();
   }
@@ -206,19 +253,22 @@ int main(void)
   /* Create FreeRTOS tasks */
   
   /* Radio tasks - highest priority for timing-critical TDMA */
-  xTaskCreate(vRadioISRHandlerTask, "RadioISR", 512, NULL, PRIORITY_RADIO_ISR_HANDLER, &xRadioISRHandlerTask);
-  xTaskCreate(vRadioProcessingTask, "RadioProc", 512, NULL, PRIORITY_RADIO_PROCESS, &xRadioProcessingTask);
-  xTaskCreate(vTDMATask, "TDMA", 512, NULL, PRIORITY_TDMA, &xTDMATask);
-  xTaskCreate(vSignalingTask, "Signaling", 384, NULL, PRIORITY_SIGNALING, &xSignalingTask);
+  xTaskCreate(vRadioISRHandlerTask, "RadioISR", 448, NULL, PRIORITY_RADIO_ISR_HANDLER, &xRadioISRHandlerTask);
+  xTaskCreate(vRadioProcessingTask, "RadioProc", 448, NULL, PRIORITY_RADIO_PROCESS, &xRadioProcessingTask);
+  xTaskCreate(vTDMATask, "TDMA", 448, NULL, PRIORITY_TDMA, &xTDMATask);
+  xTaskCreate(vSignalingTask, "Signaling", 320, NULL, PRIORITY_SIGNALING, &xSignalingTask);
   
   /* Ethernet tasks - medium priority */
-  xTaskCreate(vEthernetRxTask, "EthRx", 512, NULL, PRIORITY_ETH_RX, &xEthernetRxTask);
-  xTaskCreate(vEthernetTxTask, "EthTx", 384, NULL, PRIORITY_ETH_TX, &xEthernetTxTask);
+  xTaskCreate(vEthernetRxTask, "EthRx", 448, NULL, PRIORITY_ETH_RX, &xEthernetRxTask);
+  xTaskCreate(vEthernetTxTask, "EthTx", 320, NULL, PRIORITY_ETH_TX, &xEthernetTxTask);
   
   /* Service tasks - lower priority (stubs need minimal stack) */
-  xTaskCreate(vDHCPARPTask, "DHCP_ARP", 256, NULL, PRIORITY_DHCP_ARP, &xDHCPARPTask);
-  xTaskCreate(vSNMPTask, "SNMP", 384, NULL, PRIORITY_SNMP, &xSNMPTask);
-  xTaskCreate(vTelnetTask, "Telnet", 256, NULL, PRIORITY_TELNET, &xTelnetTask);
+  xTaskCreate(vDHCPARPTask, "DHCP_ARP", 224, NULL, PRIORITY_DHCP_ARP, &xDHCPARPTask);
+  xTaskCreate(vSNMPTask, "SNMP", 320, NULL, PRIORITY_SNMP, &xSNMPTask);
+  xTaskCreate(vTelnetTask, "Telnet", 224, NULL, PRIORITY_TELNET, &xTelnetTask);
+  
+  /* Watchdog task - lowest priority, runs periodically */
+  xTaskCreate(vWatchdogTask, "Watchdog", 128, NULL, tskIDLE_PRIORITY + 1, &xWatchdogTask);
 
   /* Start scheduler */
   vTaskStartScheduler();

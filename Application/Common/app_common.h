@@ -26,6 +26,7 @@ extern "C" {
 #include "semphr.h"
 #include <stdint.h>
 #include <string.h>
+#include "ext_sram_driver.h"  /* For ExtSRAM_Context_t */
 
 /* Exported defines ----------------------------------------------------------*/
 #define FW_VERSION "2025_11_07-freertos-v1.0"
@@ -112,6 +113,9 @@ extern SemaphoreHandle_t xSPI1Mutex;
 extern SemaphoreHandle_t xSPI3Mutex;
 extern SemaphoreHandle_t xConfigMutex;
 
+/* Driver handles - defined in main.c */
+extern ExtSRAM_Context_t hsram;
+
 /* Global configuration */
 extern LAN_conf_T LAN_conf_applied;
 extern RadioConfig_t CONF_radio;
@@ -146,6 +150,9 @@ extern volatile uint16_t RX_FIFO_WR_point;
 extern volatile uint16_t RX_FIFO_RD_point;
 extern volatile uint16_t RX_FIFO_last_received;
 extern volatile uint16_t RX_size_remaining;
+
+/* External SRAM configuration */
+#define SRAM_RX_FIFO_BASE_ADDR  0x00000000  /* RX FIFO starts at address 0 in SRAM */
 
 /* TDMA timing */
 extern volatile uint32_t TDMA_slave_last_master_top;
@@ -192,6 +199,36 @@ uint32_t GetMicrosecondTimer(void);
  * @brief Initialize global variables
  */
 void InitializeGlobalVariables(void);
+
+/**
+ * @brief Write data to RX FIFO (handles internal RAM or external SRAM)
+ * @param offset Offset in RX FIFO buffer
+ * @param data Pointer to data to write
+ * @param length Length of data to write
+ */
+void RX_FIFO_Write(uint16_t offset, const uint8_t *data, uint16_t length);
+
+/**
+ * @brief Read data from RX FIFO (handles internal RAM or external SRAM)
+ * @param offset Offset in RX FIFO buffer
+ * @param data Pointer to buffer to read into
+ * @param length Length of data to read
+ */
+void RX_FIFO_Read(uint16_t offset, uint8_t *data, uint16_t length);
+
+/**
+ * @brief Write single byte to RX FIFO
+ * @param offset Offset in RX FIFO buffer
+ * @param byte Byte to write
+ */
+void RX_FIFO_WriteByte(uint16_t offset, uint8_t byte);
+
+/**
+ * @brief Read single byte from RX FIFO
+ * @param offset Offset in RX FIFO buffer
+ * @return Byte read from FIFO
+ */
+uint8_t RX_FIFO_ReadByte(uint16_t offset);
 
 #ifdef __cplusplus
 }

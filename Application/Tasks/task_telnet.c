@@ -22,6 +22,7 @@
 #include "semphr.h"
 #include "w5500_driver.h"
 #include "app_common.h"
+#include "config_flash.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>  /* For atoi, atof */
@@ -114,9 +115,9 @@ static void ProcessCommand(const char *cmd) {
             "  show memory       - Display memory usage\r\n"
             "  show dhcp         - Display DHCP/ARP entries\r\n"
             "  radio on/off      - Enable/disable radio\r\n"
-            "  save              - Save configuration (stub)\r\n"
+            "  save              - Save configuration to flash\r\n"
             "  set <param> <val> - Set parameter\r\n"
-            "  reset_to_default  - Factory reset\r\n"
+            "  reset_to_default  - Factory reset (restore defaults)\r\n"
             "  reboot            - Restart the modem\r\n"
             "  exit, logout      - Close connection\r\n"
             "ready> ";
@@ -351,7 +352,13 @@ static void ProcessCommand(const char *cmd) {
     }
     /* Command: save */
     else if (strcmp(cmd_str, "save") == 0) {
-        strcpy((char *)tx_data, "Configuration save not yet implemented.\r\nready> ");
+        HAL_StatusTypeDef status = Config_Flash_Save();
+        
+        if (status == HAL_OK) {
+            strcpy((char *)tx_data, "Configuration saved to flash successfully.\r\nready> ");
+        } else {
+            strcpy((char *)tx_data, "ERROR: Failed to save configuration to flash!\r\nready> ");
+        }
         len = strlen((char *)tx_data);
     }
     /* Command: who */
@@ -394,7 +401,7 @@ static void ProcessCommand(const char *cmd) {
     }
     /* Command: reset_to_default */
     else if (strcmp(cmd_str, "reset_to_default") == 0) {
-        const char *msg = "Clearing config and rebooting...\r\n";
+        const char *msg = "Restoring factory defaults and rebooting...\r\n";
         strcpy((char *)tx_data, msg);
         len = strlen(msg);
         
@@ -402,7 +409,8 @@ static void ProcessCommand(const char *cmd) {
         W5500_SendData(pw5500, W5500_SOCK_TELNET, tx_data, len);
         xSemaphoreGive(xSPI3Mutex);
         
-        /* TODO: Clear flash configuration here */
+        /* Restore factory defaults to flash */
+        Config_Flash_FactoryReset();
         
         vTaskDelay(pdMS_TO_TICKS(100));
         NVIC_SystemReset();
