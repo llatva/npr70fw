@@ -1,2 +1,240 @@
-BUILD
+###############################################################################
+# NPR-70 FreeRTOS Port - Git Ignore File
+###############################################################################
+
+# Build directories
+BUILD/
+build/
+Build/
+out/
+bin/
+obj/
+
+# Build artifacts
+*.o
+*.d
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+*.lss
+*.sym
+*.a
+*.so
+*.dll
+*.dylib
+
+# Dependency files
+*.dep
+
+###############################################################################
+# FreeRTOS and STM32 HAL (downloaded dependencies - DO NOT COMMIT)
+###############################################################################
+
+# FreeRTOS Kernel (downloaded via script)
+Middleware/FreeRTOS/
+
+# STM32 HAL Drivers (downloaded via script)
+Drivers/STM32L4xx_HAL_Driver/
+Drivers/CMSIS/
+
+# Note: Only ignore if downloaded. If you customize HAL config files,
+# you may want to track those specific files by adding exceptions like:
+# !Drivers/STM32L4xx_HAL_Driver/Inc/stm32l4xx_hal_conf.h
+
+###############################################################################
+# IDE and Editor files
+###############################################################################
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Eclipse
+.cproject
+.project
+.settings/
+.metadata/
+
+# Keil
+*.uvopt
+*.uvoptx
+*.uvgui
+*.uvguix
+
+# IAR
+Debug/
+Release/
+settings/
+*.eww
+*.dep
+*.dni
+*.wsdt
+
+# CLion / IntelliJ
+.idea/
+cmake-build-*/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.*.sw?
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+###############################################################################
+# OS-specific files
+###############################################################################
+
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+###############################################################################
+# Debugging and Analysis Tools
+###############################################################################
+
+# GDB
+.gdb_history
+gdb.txt
+
+# SEGGER SystemView
+*.SVDat
+
+# Logic Analyzer captures
+*.logicdata
+*.sal
+
+# Oscilloscope screenshots
+scope_*.png
+
+###############################################################################
+# Documentation Build Artifacts (if using Doxygen, etc)
+###############################################################################
+
+html/
+latex/
+*.log
+*.aux
+*.pdf
+
+###############################################################################
+# Temporary and Backup Files
+###############################################################################
+
+*.bak
+*.tmp
+*.temp
+*~
+*.orig
+*.rej
+*.patch
+
+# Backup files from editors
+*.backup
+*.autosave
+
+###############################################################################
+# Project-specific
+###############################################################################
+
+# Compiled firmware ready for distribution
+firmware/
+release/
+
+# Test logs
+test_*.log
+*.test
+
+# Configuration backups
+config_backup/
+
+# Generated files from code generators (if any)
+*_generated.c
+*_generated.h
+
+###############################################################################
+# Python (if using Python scripts for build automation)
+###############################################################################
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.Python
+venv/
+env/
+
+###############################################################################
+# CMake (if using CMake build system)
+###############################################################################
+
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile.cmake
+*.cmake
+!CMakeLists.txt
+
+###############################################################################
+# Tags and symbols
+###############################################################################
+
+tags
+TAGS
+.tags
+cscope.*
+*.cscope
+
+###############################################################################
+# Core dumps and crash reports
+###############################################################################
+
+core
+core.*
+*.core
+*.dump
+crash.log
+
+###############################################################################
+# Keep these files
+###############################################################################
+
+# Keep README and documentation
+!README*.md
+!*.md
+
+# Keep configuration templates
+!*_template.*
+!*_example.*
+
+# Keep linker scripts
+!*.ld
+
+# Keep startup files
+!startup_*.s
+
+# Keep download script
+!download_dependencies.sh
