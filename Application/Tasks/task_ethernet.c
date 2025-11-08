@@ -54,12 +54,15 @@ void EthernetTask_Init(W5500_Context_t *w5500_ctx)
 {
     hw5500 = w5500_ctx;
     
-    /* Allocate RX buffer from heap to save static RAM */
-    rx_buffer = (uint8_t *)pvPortMalloc(1600);
+    /* Allocate RX buffer from heap - size depends on SRAM availability */
+    uint16_t rx_buf_size = GetActiveEthernetPacketDataSize();
+    rx_buffer = (uint8_t *)pvPortMalloc(rx_buf_size);
     if (rx_buffer == NULL) {
         /* Allocation failed - critical error */
+        printf("FATAL: Failed to allocate %u byte RX buffer for Ethernet task\r\n", rx_buf_size);
         while(1);  /* Trap */
     }
+    printf("Ethernet task init: RX buffer = %u bytes\r\n", rx_buf_size);
 }
 
 /**
@@ -87,9 +90,10 @@ void vEthernetTask(void *argument)
         rx_size = W5500_GetRxSize(hw5500, W5500_SOCK_RAW);
         
         if (rx_size > 0) {
-            /* Limit size to buffer capacity */
-            if (rx_size > 1600) {
-                rx_size = 1600;
+            /* Limit size to buffer capacity based on SRAM configuration */
+            uint16_t max_rx_size = GetActiveEthernetPacketDataSize();
+            if (rx_size > max_rx_size) {
+                rx_size = max_rx_size;
             }
             
             /* Receive packet from W5500 */
@@ -124,8 +128,9 @@ void vEthernetTask(void *argument)
         /* Handle TX: Check for packet in queue (non-blocking) */
         if (xQueueReceive(xEthernetTxQueue, &eth_packet, 0) == pdTRUE) {
             
-            /* Validate packet */
-            if (eth_packet.length > 0 && eth_packet.length <= sizeof(eth_packet.data)) {
+            /* Validate packet against active buffer size */
+            uint16_t max_packet_size = GetActiveEthernetPacketDataSize();
+            if (eth_packet.length > 0 && eth_packet.length <= max_packet_size) {
                 
                 retry_count = 0;
                 status = HAL_ERROR;

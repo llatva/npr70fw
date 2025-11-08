@@ -72,7 +72,7 @@
  *----------------------------------------------------------*/
 #define configSUPPORT_STATIC_ALLOCATION         1
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
-#define configTOTAL_HEAP_SIZE                   ((size_t)(18 * 1024))  /* 14makeKB heap - increased for all tasks */
+#define configTOTAL_HEAP_SIZE                   ((size_t)(16 * 1024))  /* 16KB heap - reduced from 18KB after buffer optimization */
 #define configAPPLICATION_ALLOCATED_HEAP        0
 
 /*-----------------------------------------------------------

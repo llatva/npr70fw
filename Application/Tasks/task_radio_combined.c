@@ -32,10 +32,16 @@ uint8_t *GetOrAllocBuffer(uint8_t LID)
 {
     if (LID >= RADIO_ADDR_TABLE_SIZE) return NULL;
     if (ethernet_buffer[LID] != NULL) return ethernet_buffer[LID];
-    if (xPortGetFreeHeapSize() <= 1800U) return NULL;
-    uint8_t *buf = pvPortMalloc(1600);
+    
+    /* Get buffer size based on SRAM configuration */
+    uint16_t buf_size = GetActiveEthernetPacketDataSize();
+    
+    /* Check if enough heap (need buf_size + margin) */
+    if (xPortGetFreeHeapSize() <= (buf_size + 200U)) return NULL;
+    
+    uint8_t *buf = pvPortMalloc(buf_size);
     if (buf == NULL) return NULL;
-    memset(buf, 0, 1600);
+    memset(buf, 0, buf_size);
     ethernet_buffer[LID] = buf;
     buffer_last_used_ms[LID] = xTaskGetTickCount() * portTICK_PERIOD_MS;
     return buf;
