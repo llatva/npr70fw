@@ -135,6 +135,11 @@ extern uint32_t ulGetRunTimeCounterValue(void);
 /*-----------------------------------------------------------
  * Cortex-M specific definitions
  *----------------------------------------------------------*/
+/* Map FreeRTOS handlers to the names used in startup file */
+#define vPortSVCHandler SVC_Handler
+#define xPortPendSVHandler PendSV_Handler
+#define xPortSysTickHandler SysTick_Handler
+
 /* Ensure Cortex-M port functions are available */
 /* Enhanced configASSERT with printf for better debugging */
 #include <stdio.h>
