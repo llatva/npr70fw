@@ -14,11 +14,11 @@ This port migrates the original mbed OS-based firmware to FreeRTOS 11.1.0 LTS, e
 ## Hardware Platform
 
 - **MCU**: STM32L432KC (Cortex-M4F)
-- **Flash**: 256 KB (19.9% used)
-- **RAM**: 64 KB (98.9% used)
+- **Flash**: 256 kB
+- **RAM**: 64 kB
 - **Radio**: Silicon Labs SI4463 transceiver
 - **Ethernet**: WIZnet W5500 controller
-- **External RAM**: Optional SPI SRAM (23LC1024)
+- **External RAM**: Optional 128kB SPI SRAM (23LC1024)
 
 ## Features
 
