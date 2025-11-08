@@ -51,7 +51,8 @@ static const uint8_t parity_bit_check[256] = {
 static W5500_Context_t *hw5500 = NULL;
 
 /* Per-client packet reassembly buffers - allocated dynamically to save static RAM */
-uint8_t *ethernet_buffer[RADIO_ADDR_TABLE_SIZE];  /* Pointers to 1600-byte buffers (lazy-allocated) */
+/* Buffer size depends on SRAM availability: 512B (internal) or 1600B (external) */
+uint8_t *ethernet_buffer[RADIO_ADDR_TABLE_SIZE];  /* Pointers to reassembly buffers (lazy-allocated) */
 static uint16_t size_received[RADIO_ADDR_TABLE_SIZE];
 static uint8_t prev_seg_counter[RADIO_ADDR_TABLE_SIZE];
 static uint8_t curr_pkt_counter[RADIO_ADDR_TABLE_SIZE];
@@ -344,14 +345,18 @@ static void ProcessIPv4Packet(uint8_t client_ID, uint8_t *data, uint16_t size)
 {
     EthernetPacket_t eth_packet;
     
-    /* Copy packet to queue structure */
-    if (size <= sizeof(eth_packet.data)) {
+    /* Validate size against active buffer configuration */
+    uint16_t max_size = GetActiveEthernetPacketDataSize();
+    if (size <= max_size) {
         eth_packet.socket = 0;  /* RAW socket */
         eth_packet.length = size;
         memcpy(eth_packet.data, data, size);
         
         /* Send to Ethernet TX queue */
         xQueueSend(xEthernetTxQueue, &eth_packet, pdMS_TO_TICKS(10));
+    } else {
+        /* Packet too large for current buffer configuration */
+        printf("ProcessIPv4Packet: packet size %u exceeds max %u (dropped)\r\n", size, max_size);
     }
 }
 
@@ -469,20 +474,26 @@ static uint8_t *GetOrAllocBuffer(uint8_t LID)
 
     if (ethernet_buffer[LID] != NULL) return ethernet_buffer[LID];
 
+    /* Get buffer size based on SRAM configuration */
+    uint16_t buf_size = GetActiveEthernetPacketDataSize();
     unsigned int free_before = (unsigned int)xPortGetFreeHeapSize();
-    if (free_before <= 1800U) {
+    
+    /* Check if we have enough heap (need buf_size + margin) */
+    if (free_before <= (buf_size + 200U)) {
         /* Not enough heap to allocate safely */
+        printf("GetOrAllocBuffer: insufficient heap (%u bytes) for LID %u (%u bytes needed)\r\n",
+               free_before, (unsigned int)LID, (unsigned int)(buf_size + 200U));
         return NULL;
     }
 
-    uint8_t *buf = (uint8_t *)pvPortMalloc(1600);
+    uint8_t *buf = (uint8_t *)pvPortMalloc(buf_size);
     if (buf == NULL) return NULL;
 
-    memset(buf, 0, 1600);
+    memset(buf, 0, buf_size);
     ethernet_buffer[LID] = buf;
     buffer_last_used_ms[LID] = xTaskGetTickCount() * portTICK_PERIOD_MS;
-    printf("GetOrAllocBuffer: allocated buffer for LID %u at %p (free after: %u)\r\n",
-           (unsigned int)LID, (void*)buf, (unsigned int)xPortGetFreeHeapSize());
+    printf("GetOrAllocBuffer: allocated %u bytes for LID %u at %p (free after: %u)\r\n",
+           (unsigned int)buf_size, (unsigned int)LID, (void*)buf, (unsigned int)xPortGetFreeHeapSize());
     return buf;
 }
 

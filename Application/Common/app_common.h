@@ -34,15 +34,31 @@ extern "C" {
 /* Radio configuration constants - from si4463_driver.h */
 #define RADIO_ADDR_TABLE_SIZE 4  /* Reduced from 16 to save heap (4×1600 = 6.4KB vs 25.6KB) */
 
-/* RX FIFO configuration */
-#define RX_FIFO_SIZE 0x800  /* 2KB circular buffer (reduced from 8KB to save internal RAM) */
+/* RX FIFO configuration - conditional based on external SRAM availability */
+/* When no external SRAM: use minimal buffers to fit in 64KB internal RAM */
+/* When external SRAM present: use larger buffers for better performance */
+#define RX_FIFO_SIZE_INTERNAL  0x200   /* 512B for internal RAM only mode */
+#define RX_FIFO_SIZE_EXTERNAL  0x800   /* 2KB when external SRAM available */
+
+/* Active RX FIFO size - determined at runtime based on is_SRAM_ext */
+extern uint16_t RX_FIFO_SIZE_ACTIVE;
+#define RX_FIFO_SIZE RX_FIFO_SIZE_INTERNAL  /* Compile-time size for static array (must be internal size) */
 #define RX_FIFO_MASK (RX_FIFO_SIZE - 1)
 
-/* Queue sizes */
+/* Queue sizes - conditional based on external SRAM availability */
 #define RADIO_ISR_QUEUE_SIZE 8
-#define RADIO_TX_QUEUE_SIZE 4      /* Reduced from 16 to save heap */
-#define ETHERNET_RX_QUEUE_SIZE 2   /* Reduced from 8 to save heap */
-#define ETHERNET_TX_QUEUE_SIZE 2   /* Reduced from 8 to save heap */
+#define RADIO_TX_QUEUE_SIZE_INTERNAL     2   /* Minimal for internal RAM only */
+#define RADIO_TX_QUEUE_SIZE_EXTERNAL     4   /* Larger with external SRAM */
+#define ETHERNET_RX_QUEUE_SIZE_INTERNAL  1   /* Minimal for internal RAM only */
+#define ETHERNET_RX_QUEUE_SIZE_EXTERNAL  2   /* Larger with external SRAM */
+#define ETHERNET_TX_QUEUE_SIZE_INTERNAL  1   /* Minimal for internal RAM only */
+#define ETHERNET_TX_QUEUE_SIZE_EXTERNAL  2   /* Larger with external SRAM */
+
+/* Packet buffer sizes - conditional based on external SRAM */
+#define RADIO_PACKET_DATA_SIZE_INTERNAL   256  /* Reduced for internal RAM */
+#define RADIO_PACKET_DATA_SIZE_EXTERNAL   384  /* Full size with external SRAM */
+#define ETHERNET_PACKET_DATA_SIZE_INTERNAL 512 /* Reduced for internal RAM */
+#define ETHERNET_PACKET_DATA_SIZE_EXTERNAL 1600 /* Full MTU with external SRAM */
 
 /* Exported types ------------------------------------------------------------*/
 
@@ -56,21 +72,23 @@ typedef struct {
 
 /**
  * @brief Radio RX packet structure
+ * Note: Uses INTERNAL size for static allocation. Runtime checks limit actual usage.
  */
 typedef struct {
     uint32_t timestamp;     /* Reception timestamp */
     uint8_t rssi;           /* RSSI value */
     uint16_t length;        /* Packet length */
-    uint8_t data[384];      /* Packet data */
+    uint8_t data[RADIO_PACKET_DATA_SIZE_INTERNAL];      /* Packet data - sized for internal RAM */
 } RadioRxPacket_t;
 
 /**
- * @brief Ethernet packet structure
+ * @brief Ethernet packet structure  
+ * Note: Uses INTERNAL size for static allocation. Runtime checks limit actual usage.
  */
 typedef struct {
     uint16_t socket;        /* Socket number */
     uint16_t length;        /* Packet length */
-    uint8_t data[1600];     /* Packet data (MTU) */
+    uint8_t data[ETHERNET_PACKET_DATA_SIZE_INTERNAL];     /* Packet data - sized for internal RAM */
 } EthernetPacket_t;
 
 /**
@@ -188,6 +206,24 @@ extern volatile uint16_t G_radio_addr_table_BER[RADIO_ADDR_TABLE_SIZE];
 extern volatile uint32_t g_microsecond_timer;
 
 /* Exported functions --------------------------------------------------------*/
+
+/**
+ * @brief Get active RX FIFO size based on SRAM configuration
+ * @return Current active RX FIFO size (512B internal or 2KB external)
+ */
+uint16_t GetActiveRxFifoSize(void);
+
+/**
+ * @brief Get active radio packet data size based on SRAM configuration
+ * @return Current active packet data size (256B internal or 384B external)
+ */
+uint16_t GetActiveRadioPacketDataSize(void);
+
+/**
+ * @brief Get active ethernet packet data size based on SRAM configuration
+ * @return Current active packet data size (512B internal or 1600B external)
+ */
+uint16_t GetActiveEthernetPacketDataSize(void);
 
 /**
  * @brief Get current microsecond timestamp from TIM2
