@@ -35,6 +35,7 @@
 #include "task_ethernet.h"
 #include "task_networkmgmt.h"
 #include "task_telnet.h"
+#include "task_serial_cli.h"
 #include "w5500_driver.h"
 #include "si4463_driver.h"
 #include "ext_sram_driver.h"
@@ -72,6 +73,7 @@ TaskHandle_t xEthernetTxTask = NULL;
 TaskHandle_t xDHCPARPTask = NULL;
 TaskHandle_t xSNMPTask = NULL;
 TaskHandle_t xTelnetTask = NULL;
+TaskHandle_t xSerialCLITask = NULL;
 TaskHandle_t xWatchdogTask = NULL;
 
 // Queue handles
@@ -345,6 +347,9 @@ int main(void)
   printf("  - TelnetTask_Init...\r\n");
   TelnetTask_Init(&hw5500);
   
+  printf("  - SerialCLI_Init...\r\n");
+  SerialCLI_Init(&huart2);
+  
   printf("Boot: Task modules initialized\r\n");
 
   /* Create FreeRTOS tasks */
@@ -376,6 +381,12 @@ int main(void)
   }
   if (xTaskCreate(vTelnetTask, "Telnet", 160, NULL, PRIORITY_TELNET, &xTelnetTask) != pdPASS) {
     printf("FATAL: Failed to create Telnet task!\r\n");
+    Error_Handler();
+  }
+  
+  /* Serial CLI task - interactive USB console */
+  if (xTaskCreate(vSerialCLITask, "SerialCLI", SERIAL_CLI_TASK_STACK_SIZE, NULL, SERIAL_CLI_TASK_PRIORITY, &xSerialCLITask) != pdPASS) {
+    printf("FATAL: Failed to create SerialCLI task!\r\n");
     Error_Handler();
   }
   

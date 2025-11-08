@@ -32,10 +32,24 @@ This port migrates the original mbed OS-based firmware to FreeRTOS 11.1.0 LTS, e
 - ✅ **DHCP Server**: Dynamic IP allocation for radio clients
 - ✅ **ARP Proxy**: Address resolution for radio-side clients
 - ✅ **SNMP Agent**: Network management (UDP port 161) with NPR-70 MIB
-- ✅ **Telnet Console**: Full CLI on TCP port 23 (see TELNET_COMMANDS.md)
+- ✅ **Telnet Console**: Full CLI on TCP port 23 for remote configuration
+- ✅ **USB Serial Console**: Interactive CLI on USART2 (921600 baud) for local access
+
+### Command Line Interface (CLI)
+The modem provides two identical command-line interfaces:
+- **USB Serial CLI**: Connect via USB (USART2, 921600 baud, 8N1) - boots directly to `ready>` prompt
+- **Telnet CLI**: Connect via network (TCP port 23) - same commands as serial
+
+Both interfaces share the same command library and provide identical functionality:
+- Configuration management (set parameters, save to flash)
+- Status monitoring (show tasks, memory, network)
+- Radio control (on/off, frequency, modulation)
+- System management (reboot, factory reset)
+
+See CLI reference below for available commands.
 
 ### FreeRTOS Task Architecture
-The firmware runs 7 application tasks plus system tasks:
+The firmware runs 8 application tasks plus system tasks:
 
 ```
 Priority 7: Radio            - Combined ISR handling and packet processing (240 bytes stack)
@@ -44,6 +58,7 @@ Priority 5: Signaling        - Network signaling and keepalive (128 bytes)
 Priority 4: Ethernet         - Combined RX/TX packet handling (200 bytes)
 Priority 3: NetMgmt          - Combined DHCP/ARP + SNMP services (160 bytes)
 Priority 2: Telnet           - Telnet console interface (160 bytes)
+Priority 1: SerialCLI        - USB Serial console (512 bytes)
 Priority 1: Watchdog         - Task monitoring and hardware watchdog refresh (128 bytes)
 Priority 0: IDLE             - FreeRTOS idle task (configMINIMAL_STACK_SIZE)
 ```
@@ -53,7 +68,7 @@ Priority 0: IDLE             - FreeRTOS idle task (configMINIMAL_STACK_SIZE)
 - EthernetRX + EthernetTX → **Ethernet** (saves 1 TCB + 1 stack)
 - DHCP_ARP + SNMP → **NetMgmt** (saves 1 TCB + 1 stack)
 
-This consolidation reduces heap consumption and simplifies task management while preserving all functionality.
+**CLI Code Reuse**: Telnet and Serial CLI tasks share a common command processing library (`cli_commands.c/h`), eliminating code duplication and ensuring consistent behavior across both interfaces.
 
 ## Build Information
 
@@ -61,18 +76,19 @@ This consolidation reduces heap consumption and simplifies task management while
 
 **Internal RAM Only Mode (no external SRAM)**:
 ```
-Flash:  53,064 bytes / 256 KB  (20.2%)
-RAM:    ~57,000 bytes /  64 KB  (~89%)
+Flash:  56,472 bytes / 256 KB  (22.0%)
+RAM:    ~59,560 bytes /  64 KB  (~93%)
 Heap:   16,384 bytes (FreeRTOS, 16 KB)
 ```
 - RX FIFO: 512 bytes
 - Queue depths: Minimal (1-2 items)
 - Packet buffers: 256B (radio), 512B (ethernet)
+- CLI command library: Shared between Serial and Telnet (~1KB code)
 - **Sufficient headroom for FreeRTOS to boot and run**
 
 **External SRAM Mode (128KB SRAM available)**:
 ```
-Flash:  53,064 bytes / 256 KB  (20.2%)
+Flash:  56,472 bytes / 256 KB  (22.0%)
 RAM:    ~60,000 bytes /  64 KB  (~93%)
 Heap:   16,384 bytes (FreeRTOS, 16 KB)
 ```
@@ -122,24 +138,96 @@ make flash
 
 ## Usage
 
-### Telnet Console
-Connect via telnet to port 23 for configuration and monitoring:
+### USB Serial Console (Primary Interface)
+The modem boots directly to an interactive serial console:
+
+```bash
+# Linux/macOS
+screen /dev/ttyUSB0 921600
+# or
+minicom -b 921600 -D /dev/ttyUSB0
+
+# Windows
+# Use PuTTY or TeraTerm: 921600 baud, 8N1, no flow control
+```
+
+**Connection Settings:**
+- Baud Rate: 921600
+- Data Bits: 8
+- Parity: None
+- Stop Bits: 1
+- Flow Control: None
+- Pins: PA2 (TX), PA15 (RX)
+
+Upon boot, you'll see:
+```
+========================================
+  NPR-70 Modem - FreeRTOS v1.0
+  Type 'help' for commands
+========================================
+ready>
+```
+
+### Telnet Console (Network Interface)
+Connect via telnet to port 23 for remote configuration:
 
 ```bash
 telnet <modem-ip> 23
 ```
 
-See `TELNET_COMMANDS.md` for complete command reference (18 commands available).
+Both serial and telnet consoles provide identical command sets and functionality.
 
-### Quick Start
+### Available Commands
+
 ```
-> set callsign OH1CALL
-> set network_id 5
-> set frequency 437.000
-> set is_master yes
-> radio on
-> show status
-> save
+help, ?           - Show command list
+version           - Show firmware version and build info
+status            - Show modem status (mode, radio state, connection)
+who               - Show master/client information and connected clients
+show config       - Display current configuration
+show tasks        - Display FreeRTOS tasks with stack usage
+show memory       - Display heap usage statistics
+show dhcp         - Display DHCP/ARP table entries
+radio on/off      - Enable/disable radio transceiver
+save              - Save configuration to flash memory
+set <param> <val> - Set configuration parameter
+reset_to_default  - Factory reset (restore defaults and reboot)
+reboot            - Restart the modem
+exit, logout      - Close connection (Telnet only)
+```
+
+### Configuration Parameters
+
+Use `set <parameter> <value>` to configure:
+
+- **network_id**: Radio network ID (0-15)
+- **frequency**: Operating frequency in MHz (e.g., `437.000`)
+- **modulation**: Modulation scheme (11-14 or 20-24)
+- **is_master**: Master mode enable (`yes` or `no`)
+- **callsign**: Station callsign (up to 13 characters)
+
+### Quick Start Example
+```
+ready> set callsign OH1CALL
+Callsign set to OH1CALL
+ready> set network_id 5
+Network ID set to 5
+ready> set frequency 437.000
+Frequency set to 437.000 MHz
+ready> set is_master yes
+Master mode enabled
+ready> radio on
+Radio is now ON.
+ready> show status
+Modem Status:
+  Mode: Master
+  Radio: ON
+  Client ID: 0
+  Connection: Disconnected
+  Uptime: 42 sec
+ready> save
+Configuration saved to flash successfully.
+ready>
 ```
 
 ## Port Details
@@ -148,11 +236,12 @@ See `TELNET_COMMANDS.md` for complete command reference (18 commands available).
 
 #### Task Structure
 Original mbed OS used Ticker/Thread primitives. The FreeRTOS port implements:
-- **7 application tasks** with priority-based scheduling (consolidated from original 9)
+- **8 application tasks** with priority-based scheduling (consolidated from original 9)
 - **Queue-based** inter-task communication
 - **Mutex protection** for SPI buses and shared resources
 - **Event groups** for system-wide events
 - **Task consolidation**: RadioISR+Processing, EthRX+TX, and DHCP+SNMP combined to reduce overhead
+- **Shared CLI library**: Common command processing for Serial and Telnet interfaces
 
 #### Driver Updates
 - **SI4463 Radio**: Adapted from mbed DigitalOut/SPI to STM32 HAL
@@ -162,25 +251,29 @@ Original mbed OS used Ticker/Thread primitives. The FreeRTOS port implements:
 
 #### Memory Optimization
 The original mbed implementation used ~66KB RAM. The FreeRTOS port optimizations:
-- Optimized task stack sizes (128-240 bytes per task)
+- Optimized task stack sizes (128-512 bytes per task)
 - Adaptive buffer allocation (512B/256B internal, 2KB/1600B external)
 - Reduced heap allocation (16 KB, down from 18 KB in initial port)
 - Minimized global buffers
 - Stack-based command processing
 - **Task consolidation** to reduce TCB/stack overhead
+- **Shared CLI command library** eliminates code duplication (~1KB savings)
 - **Dynamic buffer sizing** based on external SRAM detection
-- Achieved ~89% RAM utilization with internal RAM only (safe headroom)
-- Achieved ~93% RAM utilization with external SRAM (enhanced performance)
+- Achieved ~93% RAM utilization with internal RAM only (safe with SerialCLI)
+- USB Serial console adds ~512 bytes stack + ~400 bytes CLI buffer
+- Final firmware: 56,472 bytes flash (22%), 59,560 bytes RAM (93%)
 
 ### Code Structure
 ```
 Application/
-├── Common/          - Shared definitions and global variables
+├── Common/          - Shared definitions and CLI library
 │   ├── app_common.h/c
+│   └── cli_commands.h/c    - Shared CLI command processing
 ├── Ethernet/        - W5500 driver and network stack
 │   ├── w5500_driver.h/c
-├── Memory/          - External SRAM driver
+├── Memory/          - External SRAM and flash configuration
 │   ├── ext_sram_driver.h/c
+│   └── config_flash.h/c
 ├── Radio/           - SI4463 radio driver
 │   ├── si4463_driver.h/c
 └── Tasks/           - FreeRTOS task implementations
@@ -189,7 +282,8 @@ Application/
     ├── task_ethernet.c         - Combined Ethernet RX + TX
     ├── task_signaling.c        - Network signaling
     ├── task_networkmgmt.c      - Combined DHCP/ARP + SNMP
-    └── task_telnet.c           - Telnet console
+    ├── task_telnet.c           - Telnet console (uses cli_commands)
+    └── task_serial_cli.c       - USB Serial console (uses cli_commands)
     
     (Legacy task files remain but are filtered out in Makefile:
      task_radio_isr.c, task_radio_processing.c, 
@@ -197,26 +291,29 @@ Application/
      task_dhcp_arp.c, task_snmp.c)
 
 Core/
-├── Inc/             - STM32 HAL headers, main.h
+├── Inc/             - STM32 HAL headers, main.h, FreeRTOSConfig.h
 └── Src/             - main.c, HAL initialization, startup code
 
 Drivers/             - STM32 HAL and CMSIS
-Middleware/          - FreeRTOS kernel
+Middleware/          - FreeRTOS kernel (v11.1.0 LTS)
 ```
 
 ## Testing Status
 
 ### Verified Functions
-- ✅ Build system (clean compilation)
-- ✅ Task creation and scheduling
-- ✅ Memory allocation (heap at limit)
+- ✅ Build system (clean compilation, 56KB flash, 59KB RAM)
+- ✅ Task creation and scheduling (8 tasks)
+- ✅ Memory allocation (heap optimized at 16KB)
 - ✅ W5500 socket initialization
-- ✅ Telnet CLI (18 commands)
+- ✅ Telnet CLI (full command set)
+- ✅ USB Serial CLI (921600 baud, interactive console)
+- ✅ Shared CLI command library (code reuse between interfaces)
 
 ### Requires Hardware Testing
 - ⚠️ SI4463 radio TX/RX
 - ⚠️ TDMA timing accuracy
 - ⚠️ Ethernet packet flow
+- ⚠️ Serial console at 921600 baud (PA2/PA15)
 - ⚠️ DHCP client registration
 - ⚠️ SNMP queries
 - ⚠️ End-to-end radio bridge

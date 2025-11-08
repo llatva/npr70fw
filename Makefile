@@ -62,8 +62,12 @@ C_SOURCES += Application/Tasks/task_signaling.c
 C_SOURCES += Application/Tasks/task_dhcp_arp.c
 C_SOURCES += Application/Tasks/task_snmp.c
 C_SOURCES += Application/Tasks/task_telnet.c
+C_SOURCES += Application/Tasks/task_serial_cli.c
 C_SOURCES += Application/Tasks/task_ethernet.c
 C_SOURCES += Application/Tasks/task_networkmgmt.c
+
+# Common/shared modules
+C_SOURCES += Application/Common/cli_commands.c
 
 ASM_SOURCES = Core/Src/startup_stm32l432xx.s
 
