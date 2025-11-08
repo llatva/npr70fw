@@ -100,6 +100,30 @@ volatile uint16_t G_radio_addr_table_BER[RADIO_ADDR_TABLE_SIZE] = {0};
 /* TIM2 microsecond timer overflow counter */
 volatile uint32_t g_microsecond_timer_overflow = 0;
 
+/* Active buffer sizes - determined at runtime based on external SRAM */
+uint16_t RX_FIFO_SIZE_ACTIVE = RX_FIFO_SIZE_INTERNAL;
+
+/**
+ * @brief Get active RX FIFO size based on SRAM configuration
+ */
+uint16_t GetActiveRxFifoSize(void) {
+    return is_SRAM_ext ? RX_FIFO_SIZE_EXTERNAL : RX_FIFO_SIZE_INTERNAL;
+}
+
+/**
+ * @brief Get active radio packet data size based on SRAM configuration
+ */
+uint16_t GetActiveRadioPacketDataSize(void) {
+    return is_SRAM_ext ? RADIO_PACKET_DATA_SIZE_EXTERNAL : RADIO_PACKET_DATA_SIZE_INTERNAL;
+}
+
+/**
+ * @brief Get active ethernet packet data size based on SRAM configuration
+ */
+uint16_t GetActiveEthernetPacketDataSize(void) {
+    return is_SRAM_ext ? ETHERNET_PACKET_DATA_SIZE_EXTERNAL : ETHERNET_PACKET_DATA_SIZE_INTERNAL;
+}
+
 /**
  * @brief Get current microsecond timestamp from TIM2
  * @return Current timestamp in microseconds (48-bit resolution)
@@ -126,6 +150,9 @@ void InitializeGlobalVariables(void)
 {
     int i;
     
+    /* Set active FIFO size based on external SRAM availability */
+    RX_FIFO_SIZE_ACTIVE = is_SRAM_ext ? RX_FIFO_SIZE_EXTERNAL : RX_FIFO_SIZE_INTERNAL;
+    
     /* Reset FIFO pointers */
     RX_FIFO_WR_point = 0;
     RX_FIFO_RD_point = 0;
@@ -134,14 +161,14 @@ void InitializeGlobalVariables(void)
     
     /* Clear FIFO data (internal RAM or external SRAM) */
     if (is_SRAM_ext) {
-        /* Clear external SRAM RX FIFO area */
+        /* Clear external SRAM RX FIFO area - use external size */
         uint8_t zero_buf[256] = {0};
-        for (uint32_t addr = 0; addr < RX_FIFO_SIZE; addr += 256) {
+        for (uint32_t addr = 0; addr < RX_FIFO_SIZE_EXTERNAL; addr += 256) {
             ExtSRAM_Write(&hsram, zero_buf, SRAM_RX_FIFO_BASE_ADDR + addr, 256);
         }
     } else {
-        /* Clear internal RAM */
-        memset((void*)RX_FIFO_data, 0, RX_FIFO_SIZE);
+        /* Clear internal RAM - only clear the size we're actually using */
+        memset((void*)RX_FIFO_data, 0, RX_FIFO_SIZE_INTERNAL);
     }
     
     /* Reset radio address table */

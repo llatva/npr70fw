@@ -204,23 +204,46 @@ int main(void)
   }
   printf("Boot: Mutexes created\r\n");
   
-  /* Create Queues */
+  /* Initialize external SRAM early - BEFORE creating queues */
+  /* This determines buffer sizes for optimal RAM usage */
+  printf("Boot: Checking for external SRAM...\r\n");
+  hsram.hspi = &hspi3;
+  hsram.cs_port = GPIOB;
+  hsram.cs_pin = GPIO_PIN_0;
+  hsram.spi_mutex = xSPI3Mutex;
+  
+  is_SRAM_ext = (ExtSRAM_Init(&hsram) == HAL_OK) ? 1 : 0;
+  if (is_SRAM_ext) {
+    printf("Boot: External SRAM detected - using larger buffers\r\n");
+  } else {
+    printf("Boot: No external SRAM - using minimal buffers to fit in 64KB internal RAM\r\n");
+  }
+  
+  /* Create Queues with sizes based on SRAM availability */
+  /* Smaller queues when using internal RAM only to prevent OOM */
+  uint8_t radio_tx_queue_size = is_SRAM_ext ? RADIO_TX_QUEUE_SIZE_EXTERNAL : RADIO_TX_QUEUE_SIZE_INTERNAL;
+  uint8_t eth_rx_queue_size = is_SRAM_ext ? ETHERNET_RX_QUEUE_SIZE_EXTERNAL : ETHERNET_RX_QUEUE_SIZE_INTERNAL;
+  uint8_t eth_tx_queue_size = is_SRAM_ext ? ETHERNET_TX_QUEUE_SIZE_EXTERNAL : ETHERNET_TX_QUEUE_SIZE_INTERNAL;
+  
+  printf("Boot: Creating queues (RadioTx=%d, EthRx=%d, EthTx=%d)...\r\n", 
+         radio_tx_queue_size, eth_rx_queue_size, eth_tx_queue_size);
+  
   xRadioISRQueue = xQueueCreate(RADIO_ISR_QUEUE_SIZE, sizeof(RadioISREvent_t));
   if (xRadioISRQueue == NULL) {
     printf("FATAL: Failed to create RadioISR queue!\r\n");
     Error_Handler();
   }
-  xRadioTxQueue = xQueueCreate(RADIO_TX_QUEUE_SIZE, sizeof(RadioRxPacket_t));
+  xRadioTxQueue = xQueueCreate(radio_tx_queue_size, sizeof(RadioRxPacket_t));
   if (xRadioTxQueue == NULL) {
     printf("FATAL: Failed to create RadioTx queue!\r\n");
     Error_Handler();
   }
-  xEthernetRxQueue = xQueueCreate(ETHERNET_RX_QUEUE_SIZE, sizeof(EthernetPacket_t));
+  xEthernetRxQueue = xQueueCreate(eth_rx_queue_size, sizeof(EthernetPacket_t));
   if (xEthernetRxQueue == NULL) {
     printf("FATAL: Failed to create EthernetRx queue!\r\n");
     Error_Handler();
   }
-  xEthernetTxQueue = xQueueCreate(ETHERNET_TX_QUEUE_SIZE, sizeof(EthernetPacket_t));
+  xEthernetTxQueue = xQueueCreate(eth_tx_queue_size, sizeof(EthernetPacket_t));
   if (xEthernetTxQueue == NULL) {
     printf("FATAL: Failed to create EthernetTx queue!\r\n");
     Error_Handler();
@@ -264,11 +287,8 @@ int main(void)
   hw5500.int_pin = GPIO_PIN_8;
   hw5500.spi_mutex = xSPI3Mutex;
   
-  /* External SRAM configuration */
-  hsram.hspi = &hspi3;
-  hsram.cs_port = GPIOB;
-  hsram.cs_pin = GPIO_PIN_0;
-  hsram.spi_mutex = xSPI3Mutex;
+  /* External SRAM already initialized earlier (before queue creation) */
+  /* Configuration structure was set up then */
 
   /* Initialize hardware drivers (now mutexes exist) */
   /* Note: Hardware may not be present - continue boot even if init fails */
@@ -302,14 +322,8 @@ int main(void)
     printf("Boot: SI4463 OK\r\n");
   }
   
-  /* Initialize external SRAM if present */
-  printf("Boot: Checking for external SRAM...\r\n");
-  is_SRAM_ext = (ExtSRAM_Init(&hsram) == HAL_OK) ? 1 : 0;
-  if (is_SRAM_ext) {
-    printf("Boot: External SRAM detected and initialized\r\n");
-  } else {
-    printf("Boot: No external SRAM, using internal RAM\r\n");
-  }
+  /* External SRAM already initialized earlier */
+  /* This was moved before queue creation to determine buffer sizes */
   
   /* Initialize task-specific modules */
   printf("Boot: Initializing task modules...\r\n");
