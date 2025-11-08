@@ -2,6 +2,8 @@
 
 This repository contains the NPR-70 modem firmware ported from mbed OS to FreeRTOS.
 
+** WORK IN PROGRESS (W.I.P) -- NOT WORKING YET ** 
+
 ## Project Overview
 
 **Original firmware** by F4HDK Guillaume (2017-2020)  
