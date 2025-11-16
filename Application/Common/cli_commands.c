@@ -40,10 +40,10 @@ void CLI_Init(CLI_Context_t *ctx, CLI_OutputFunc_t output_func,
 void CLI_SendWelcome(CLI_Context_t *ctx) {
     const char *welcome = 
         "\r\n"
-        "========================================\r\n"
-        "  NPR-70 Modem - FreeRTOS v" FW_VERSION "\r\n"
+        "=====================================================\r\n"
+        "  NPR-70 / TACNPR modem, FreeRTOS port v" FW_VERSION "\r\n"
         "  Type 'help' for commands\r\n"
-        "========================================\r\n";
+        "=====================================================\r\n";
     
     if (ctx->output_func) {
         ctx->output_func((const uint8_t *)welcome, strlen(welcome), ctx->user_data);

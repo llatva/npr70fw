@@ -15,6 +15,8 @@
 #ifndef APP_COMMON_H
 #define APP_COMMON_H
 
+#define PLACE_IN_SRAM2 __attribute__((section(".sram2")))
+
 #ifdef __cplusplus
 extern "C" {
 #endif
