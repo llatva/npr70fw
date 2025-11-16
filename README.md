@@ -20,7 +20,7 @@ This port migrates the original mbed OS-based firmware to FreeRTOS 11.1.0 LTS, e
 - **RAM**: 64 kB
 - **Radio**: Silicon Labs SI4463 transceiver
 - **Ethernet**: WIZnet W5500 controller
-- **External RAM**: Optional 128kB SPI SRAM (23LC1024)
+- **External RAM**: **REQUIRED** 128kB SPI SRAM (23LC1024)
 
 ## Features
 
@@ -74,37 +74,49 @@ Priority 0: IDLE             - FreeRTOS idle task (configMINIMAL_STACK_SIZE)
 
 ## Build Information
 
-### Memory Usage (with optimizations)
+### Memory Usage (with external SRAM - REQUIRED)
 
-**Internal RAM Only Mode (no external SRAM)**:
+**Current Configuration (External SRAM Mandatory)**:
 ```
-Flash:  56,472 bytes / 256 KB  (22.0%)
-RAM:    ~59,560 bytes /  64 KB  (~93%)
+Flash:  57,628 bytes / 256 KB  (22.5%)
+RAM:    ~59,040 bytes /  64 KB  (~92%)
 Heap:   16,384 bytes (FreeRTOS, 16 KB)
 ```
-- RX FIFO: 512 bytes
-- Queue depths: Minimal (1-2 items)
-- Packet buffers: 256B (radio), 512B (ethernet)
-- CLI command library: Shared between Serial and Telnet (~1KB code)
-- **Sufficient headroom for FreeRTOS to boot and run**
-
-**External SRAM Mode (128KB SRAM available)**:
-```
-Flash:  56,472 bytes / 256 KB  (22.0%)
-RAM:    ~60,000 bytes /  64 KB  (~93%)
-Heap:   16,384 bytes (FreeRTOS, 16 KB)
-```
-- RX FIFO: 2048 bytes  
+- RX FIFO: 2048 bytes (stored in external SRAM)
 - Queue depths: Enhanced (2-4 items)
 - Packet buffers: 384B (radio), 1600B (ethernet full MTU)
-- **Enhanced performance with full packet size support**
+- **External SRAM usage provides optimal performance**
+
+### External SRAM Requirement
+
+**IMPORTANT**: This firmware **REQUIRES** external SPI SRAM to operate. The modem will not boot without it.
+
+The external SRAM (23LC1024, 128KB) is used for:
+- **RX FIFO Buffer**: 2KB circular buffer for radio reception
+- **Packet Buffers**: Enhanced buffer sizes for better throughput
+- **Queue Storage**: Increased queue depths for smoother operation
+
+**Hardware Configuration**:
+- SRAM Chip: 23LC1024 (128KB SPI SRAM)
+- SPI Bus: SPI3  
+- Chip Select: PB0
+- Operating Mode: Sequential mode for efficient transfers
+
+If the external SRAM is not detected or fails testing at boot, the firmware will:
+1. Display a detailed error message on the serial console
+2. Indicate possible causes (missing chip, wiring, SPI config)
+3. Halt the system and blink LEDs to indicate error state
+4. Require hardware fix and reboot to proceed
 
 ### Memory Optimization Strategy
-The firmware automatically detects external SRAM at boot and adjusts buffer sizes accordingly:
-- **Without external SRAM**: Uses minimal 512B/256B buffers to fit within 64KB internal RAM
-- **With external SRAM**: Uses larger 2KB/1600B buffers for better throughput
 
-This ensures basic functionality works with internal RAM only while providing enhanced performance when external SRAM is available.
+The firmware now requires external SRAM and uses it efficiently:
+- **RX FIFO in external SRAM**: Frees 512 bytes of internal RAM
+- **Larger buffers**: 2KB RX FIFO, 1600B Ethernet packets support full MTU
+- **Better performance**: No packet fragmentation needed for standard Ethernet frames
+- **Internal RAM**: Used for time-critical data, stacks, and heap (16 KB)
+
+This configuration provides the best balance of performance and reliability.
 
 ### Toolchain
 - **Compiler**: arm-none-eabi-gcc 13.2.1
@@ -132,7 +144,8 @@ make flash
 - **Modulation**: 22 (configurable 11-14, 20-24)
 - **Mode**: Client (configurable via telnet)
 - **Heap Size**: 16 KB (FreeRTOS - optimized for internal RAM)
-- **Buffer Sizing**: Automatic based on external SRAM detection
+- **Buffer Sizing**: Fixed at optimal external SRAM sizes (external SRAM required)
+- **External SRAM**: 128KB 23LC1024 SPI SRAM (REQUIRED for operation)
 
 ### Radio Bands
 - **70cm band**: 420-450 MHz (default)
@@ -322,24 +335,24 @@ Middleware/          - FreeRTOS kernel (v11.1.0 LTS)
 
 ## Known Limitations
 
-1. **Packet Size Limitation (Internal RAM Mode)**: When running without external SRAM, maximum packet sizes are reduced to fit in 64KB RAM:
-   - Radio packets: 256 bytes (vs 384 bytes with external SRAM)
-   - Ethernet packets: 512 bytes (vs 1600 bytes MTU with external SRAM)
-2. **Configuration Persistence**: Flash save/load not yet implemented
-3. **Factory Reset**: Clears config but persistence not implemented
+1. **External SRAM Required**: The firmware **REQUIRES** external SPI SRAM (23LC1024, 128KB) to operate. The modem will not boot without it. This provides optimal buffer sizes for full Ethernet MTU support (1600 bytes) and enhanced radio packet handling.
+2. **Configuration Persistence**: Flash save/load not yet fully implemented
+3. **Factory Reset**: Clears config but persistence not fully implemented  
 4. **Advanced Features**: Some original mbed features may need adaptation
 
 ## Development Notes
 
 ### Critical Constraints
+- **External SRAM**: MANDATORY - firmware checks on boot and halts if not present
 - **Stack Sizes**: Carefully tuned to avoid overflow (128-240 bytes)
 - **Heap Size**: 16 KB shared across all tasks (optimized from 18 KB)
 - **Buffer Sizes**: 
-  - Internal RAM mode: 512B RX FIFO, 256B radio packets, 512B ethernet packets
-  - External SRAM mode: 2KB RX FIFO, 384B radio packets, 1600B ethernet packets
+  - RX FIFO: 2KB in external SRAM
+  - Radio packets: 384B
+  - Ethernet packets: 1600B (full MTU)
 - **Float Operations**: Avoided where possible to save code space
 - **Task Consolidation**: Required to fit within 64 KB RAM limit
-- **Adaptive Memory**: Buffer sizes automatically adjust based on SRAM detection
+- **External SRAM Usage**: RX FIFO and packet buffers stored in external SRAM to free internal RAM
 
 ### Future Enhancements
 - Configuration save/restore to flash
@@ -364,6 +377,17 @@ FreeRTOS port: Copyright (c) 2025 Lasse OH3HZB
 - STM32L4 Series: STMicroelectronics
 
 ## Version History
+
+### 2025-11-16: FreeRTOS Port v1.2 - External SRAM Mandatory
+- **External SRAM is now REQUIRED for operation**
+- Firmware checks for external SRAM on boot and halts with detailed error if not present
+- RX FIFO (2KB) always stored in external SRAM
+- Buffer sizes fixed at optimal external SRAM values (384B radio, 1600B ethernet)
+- Removed conditional buffer sizing logic
+- Internal RAM freed for better heap/stack headroom (~512 bytes saved)
+- Boot process includes SRAM read/write test for reliability
+- Updated documentation to reflect external SRAM requirement
+- Memory usage: 57,628 bytes flash (22.5%), 59,040 bytes RAM (92%)
 
 ### 2025-11-08: FreeRTOS Port v1.1 - RAM Optimization
 - **Critical RAM optimization to enable boot with internal RAM only**
