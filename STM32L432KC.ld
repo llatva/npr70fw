@@ -27,8 +27,8 @@ ENTRY(Reset_Handler)
 _estack = ORIGIN(SRAM1) + LENGTH(SRAM1);  /* End of SRAM1 */
 
 /* FreeRTOS heap size - defined here for linker awareness */
-_Min_Heap_Size = 0x4000;  /* 16KB for FreeRTOS heap_4 allocator (reduced from 32KB) */
-_Min_Stack_Size = 0x800;  /* 2KB for main stack (MSP) (reduced from 4KB) */
+_Min_Heap_Size = 0x3000;  /* 12KB for FreeRTOS heap_4 allocator (carefully tuned after SRAM2 optimization) */
+_Min_Stack_Size = 0x600;  /* 1.5KB for main stack (MSP) (reduced from 2KB) */
 
 /* Specify the memory areas */
 MEMORY

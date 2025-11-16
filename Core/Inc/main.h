@@ -36,6 +36,15 @@ extern "C" {
 #include <string.h>
 #include <stdbool.h>
 
+/* Memory Section Attributes -------------------------------------------------*/
+/**
+ * @brief Place variable in SRAM2 (16KB at 0x10000000)
+ * SRAM2 is separate from main SRAM1, ideal for large buffers to save SRAM1 space.
+ * Use this for large static buffers in tasks to free up SRAM1.
+ * Example: static uint8_t buffer[1024] PLACE_IN_SRAM2;
+ */
+#define PLACE_IN_SRAM2 __attribute__((section(".sram2")))
+
 /* Exported types ------------------------------------------------------------*/
 
 /* System event group bits */

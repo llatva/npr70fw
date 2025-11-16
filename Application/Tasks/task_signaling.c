@@ -54,8 +54,8 @@ static int TX_signal_frame_point = 0;
 static int connect_state_machine_counter = 0;
 static int time_counter_last_ack = 0;
 
-// Temporary buffer for building signaling messages
-static uint8_t loc_data[60];
+// Temporary buffer for building signaling messages - moved to SRAM2 for consistency (60 bytes saved)
+static uint8_t loc_data[60] PLACE_IN_SRAM2;
 
 /* External variables --------------------------------------------------------*/
 extern uint32_t last_rframe_seen;

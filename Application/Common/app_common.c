@@ -60,8 +60,8 @@ volatile uint8_t is_telnet_active = 0;
 volatile uint8_t my_client_radio_connexion_state = 0;
 uint8_t my_radio_client_ID = 0;  /* Default client ID */
 
-/* RX FIFO */
-uint8_t RX_FIFO_data[RX_FIFO_SIZE];
+/* RX FIFO - Move to SRAM2 to save main SRAM1 space (512 bytes saved) */
+uint8_t RX_FIFO_data[RX_FIFO_SIZE] PLACE_IN_SRAM2;
 volatile uint16_t RX_FIFO_WR_point = 0;
 volatile uint16_t RX_FIFO_RD_point = 0;
 volatile uint16_t RX_FIFO_last_received = 0;

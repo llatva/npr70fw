@@ -396,8 +396,9 @@ static int LookforFreeLANIP(uint8_t *client_MAC, uint8_t *requested_IP,
  * @brief DHCP server main function
  */
 static void DHCPServer(void) {
-    static uint8_t RX_data[600];
-    static uint8_t DHCP_answer[400];
+    /* Move large buffers to SRAM2 to save main SRAM1 space (1000 bytes saved) */
+    static uint8_t RX_data[600] PLACE_IN_SRAM2;
+    static uint8_t DHCP_answer[400] PLACE_IN_SRAM2;
     uint8_t client_MAC[6];
     uint8_t session_ID[4];
     uint8_t requested_IP[4] = {0, 0, 0, 0};
