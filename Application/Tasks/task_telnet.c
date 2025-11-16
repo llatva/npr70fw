@@ -47,7 +47,8 @@ static TelnetStats_t stats = {0};
 static TelnetState_t telnet_state = TELNET_STATE_CLOSED;
 static uint32_t last_activity = 0;
 static CLI_Context_t cli_ctx;
-static uint8_t response_buffer[CLI_MAX_RESPONSE_LEN];
+/* Move large CLI response buffer to SRAM2 to save main SRAM1 space (400 bytes saved) */
+static uint8_t response_buffer[CLI_MAX_RESPONSE_LEN] PLACE_IN_SRAM2;
 
 /* External variables --------------------------------------------------------*/
 extern SemaphoreHandle_t xSPI3Mutex;
@@ -105,9 +106,10 @@ static void SendWelcomeMessage(void) {
 static void ProcessTelnetConnection(void) {
     uint8_t sock_status;
     uint16_t rx_size;
-    static uint8_t rx_buffer[TELNET_MAX_LINE_LEN + 10];
-    static uint8_t tx_echo[TELNET_MAX_LINE_LEN + 10];
-    static char cmd_line[TELNET_MAX_LINE_LEN];
+    /* Move telnet session buffers to SRAM2 to save main SRAM1 space (320 bytes saved) */
+    static uint8_t rx_buffer[TELNET_MAX_LINE_LEN + 10] PLACE_IN_SRAM2;
+    static uint8_t tx_echo[TELNET_MAX_LINE_LEN + 10] PLACE_IN_SRAM2;
+    static char cmd_line[TELNET_MAX_LINE_LEN] PLACE_IN_SRAM2;
     static int cmd_pos = 0;
     
     xSemaphoreTake(xSPI3Mutex, portMAX_DELAY);

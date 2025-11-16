@@ -59,8 +59,8 @@ static uint8_t curr_pkt_counter[RADIO_ADDR_TABLE_SIZE];
 /* Last-used timestamp (ms) for idle freeing */
 uint32_t buffer_last_used_ms[RADIO_ADDR_TABLE_SIZE];
 
-/* Temporary decode buffer */
-static uint8_t data_RX[360];
+/* Temporary decode buffer - moved to SRAM2 to save main SRAM1 space (360 bytes saved) */
+static uint8_t data_RX[360] PLACE_IN_SRAM2;
 
 /* Statistics */
 static uint32_t rx_packet_count = 0;
