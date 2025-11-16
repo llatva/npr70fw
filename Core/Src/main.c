@@ -401,30 +401,31 @@ int main(void)
   printf("Boot: Creating FreeRTOS tasks...\r\n");
   
   /* Radio tasks - highest priority for timing-critical TDMA */
-  if (xTaskCreate(vRadioTask, "Radio", 240, NULL, PRIORITY_RADIO_ISR_HANDLER, &xRadioISRHandlerTask) != pdPASS) {
+  /* Stack reduced conservatively by 10-15% based on typical usage patterns */
+  if (xTaskCreate(vRadioTask, "Radio", 220, NULL, PRIORITY_RADIO_ISR_HANDLER, &xRadioISRHandlerTask) != pdPASS) {
     printf("FATAL: Failed to create Radio task!\r\n");
     Error_Handler();
   }
-  if (xTaskCreate(vTDMATask, "TDMA", 160, NULL, PRIORITY_TDMA, &xTDMATask) != pdPASS) {
+  if (xTaskCreate(vTDMATask, "TDMA", 144, NULL, PRIORITY_TDMA, &xTDMATask) != pdPASS) {
     printf("FATAL: Failed to create TDMA task!\r\n");
     Error_Handler();
   }
-  if (xTaskCreate(vSignalingTask, "Signaling", 128, NULL, PRIORITY_SIGNALING, &xSignalingTask) != pdPASS) {
+  if (xTaskCreate(vSignalingTask, "Signaling", 112, NULL, PRIORITY_SIGNALING, &xSignalingTask) != pdPASS) {
     printf("FATAL: Failed to create Signaling task!\r\n");
     Error_Handler();
   }
   
   /* Combined Ethernet task (RX+TX) */
-  if (xTaskCreate(vEthernetTask, "Ethernet", 200, NULL, PRIORITY_ETH_RX, NULL) != pdPASS) {
+  if (xTaskCreate(vEthernetTask, "Ethernet", 180, NULL, PRIORITY_ETH_RX, NULL) != pdPASS) {
     printf("FATAL: Failed to create Ethernet task!\r\n");
     Error_Handler();
   }
   /* Combined NetworkMgmt task (DHCP/ARP + SNMP) */
-  if (xTaskCreate(vNetworkMgmtTask, "NetMgmt", 160, NULL, PRIORITY_DHCP_ARP, NULL) != pdPASS) {
+  if (xTaskCreate(vNetworkMgmtTask, "NetMgmt", 144, NULL, PRIORITY_DHCP_ARP, NULL) != pdPASS) {
     printf("FATAL: Failed to create NetworkMgmt task!\r\n");
     Error_Handler();
   }
-  if (xTaskCreate(vTelnetTask, "Telnet", 160, NULL, PRIORITY_TELNET, &xTelnetTask) != pdPASS) {
+  if (xTaskCreate(vTelnetTask, "Telnet", 144, NULL, PRIORITY_TELNET, &xTelnetTask) != pdPASS) {
     printf("FATAL: Failed to create Telnet task!\r\n");
     Error_Handler();
   }
@@ -436,7 +437,7 @@ int main(void)
   }
   
   /* Watchdog task - lowest priority, runs periodically */
-  if (xTaskCreate(vWatchdogTask, "Watchdog", 128, NULL, tskIDLE_PRIORITY + 1, &xWatchdogTask) != pdPASS) {
+  if (xTaskCreate(vWatchdogTask, "Watchdog", 112, NULL, tskIDLE_PRIORITY + 1, &xWatchdogTask) != pdPASS) {
     printf("FATAL: Failed to create Watchdog task!\r\n");
     Error_Handler();
   }

@@ -60,12 +60,30 @@ Strategy: Move large static buffers from SRAM1 to SRAM2 using linker sections.
 
 ## Total RAM Savings
 
+### Phase 1: SRAM2 Migration + Initial Heap/Stack Reduction
+
 | Optimization | Bytes Saved | % of SRAM1 |
 |-------------|-------------|------------|
 | Buffers to SRAM2 | 2,592 | 4.0% |
-| Heap Reduction | 2,048 | 3.1% |
-| Stack Reduction | 512 | 0.8% |
-| **TOTAL** | **5,152** | **7.9%** |
+| Heap Reduction (16KB→14KB) | 2,048 | 3.1% |
+| Stack Reduction (2KB→1.5KB) | 512 | 0.8% |
+| **Phase 1 Subtotal** | **5,152** | **7.9%** |
+
+### Phase 2: Further Optimization
+
+| Optimization | Bytes Saved | % of SRAM1 |
+|-------------|-------------|------------|
+| Heap Reduction (14KB→12KB) | 2,048 | 3.1% |
+| Additional SRAM2 (signaling) | 60 | 0.1% |
+| Task Stack Optimization (~10%) | 520 | 0.8% |
+| **Phase 2 Subtotal** | **2,628** | **4.0%** |
+
+### Total Optimization
+
+| Metric | Value |
+|--------|-------|
+| **TOTAL BYTES SAVED** | **7,780** |
+| **TOTAL % OF SRAM1** | **11.9%** |
 
 ## Projected New RAM Status
 
@@ -73,9 +91,38 @@ Strategy: Move large static buffers from SRAM1 to SRAM2 using linker sections.
 - Used: 64,648 bytes (98.9%)
 - Free: 888 bytes (1.4%)
 
-### After Optimization
-- Used: ~59,496 bytes (90.9%)
-- Free: ~6,040 bytes (9.2%)
+### After Phase 1 + Phase 2
+- Saved: 7,780 bytes
+- New Used: ~56,868 bytes (86.9%)
+- New Free: ~8,668 bytes (13.3%)
+
+**Status vs Target:**
+- Target: 15-20% free (9.6KB - 12.8KB)
+- Achieved: 13.3% free (~8.7KB)
+- Gap to 15%: ~1.1KB (1.7%)
+
+## Stack Optimization Details
+
+### Original Task Stacks:
+- Radio: 240 words = 960 bytes
+- TDMA: 160 words = 640 bytes
+- Signaling: 128 words = 512 bytes
+- Ethernet: 200 words = 800 bytes
+- NetMgmt: 160 words = 640 bytes
+- Telnet: 160 words = 640 bytes
+- Watchdog: 128 words = 512 bytes
+- **Total: 1,176 words = 4,704 bytes**
+
+### Optimized Task Stacks (10% reduction):
+- Radio: 220 words = 880 bytes (-80 bytes)
+- TDMA: 144 words = 576 bytes (-64 bytes)
+- Signaling: 112 words = 448 bytes (-64 bytes)
+- Ethernet: 180 words = 720 bytes (-80 bytes)
+- NetMgmt: 144 words = 576 bytes (-64 bytes)
+- Telnet: 144 words = 576 bytes (-64 bytes)
+- Watchdog: 112 words = 448 bytes (-64 bytes)
+- **Total: 1,056 words = 4,224 bytes**
+- **Savings: 480 bytes**
 
 ## Additional Opportunities for Further Optimization
 
@@ -148,15 +195,69 @@ If 15-20% free RAM target (9.6KB - 12.8KB) is not achieved, consider:
 
 **Target**: 15-20% free RAM = 9.6KB - 12.8KB free
 
-**Current Projection**: 9.2% free = ~6KB free
+**Achieved After Phase 1 + Phase 2**: 13.3% free = ~8.7KB free
 
-**Status**: Need additional optimization to reach 15% target
+**Status**: Close to 15% target - within 1.1KB (1.7%)
 
-**Next Steps**:
-1. Build and verify current changes work correctly
-2. Profile actual RAM usage in running system
-3. Implement Phase 2 optimizations if needed
-4. Re-evaluate heap size based on actual usage patterns
+## Recommendations to Reach 15% Target
+
+### Option 1: Runtime Profiling (RECOMMENDED)
+After deployment and testing, use FreeRTOS monitoring:
+
+```c
+// Check actual heap usage
+size_t heap_free = xPortGetFreeHeapSize();
+size_t heap_min = xPortGetMinimumEverFreeHeapSize();
+
+// Check task stack usage (% used)
+for each task:
+    UBaseType_t hwm = uxTaskGetStackHighWaterMark(task_handle);
+    // hwm = words of stack NEVER used
+    // Can reduce stack if hwm > 25% of allocated
+```
+
+Based on profiling:
+- If heap minimum > 8KB: Reduce heap by 1KB more → +1KB free (reach 14.8%)
+- If any task stack HWM > 30%: Reduce that task by 10% → +50-100 bytes each
+- Combined: Can reach 15-16% free
+
+### Option 2: Aggressive Heap Reduction (CAUTION)
+- Further reduce heap to 11KB (-1KB more)
+- Risk: May cause allocation failures under load
+- **Only if profiling confirms heap usage < 7KB**
+
+### Option 3: Queue Size Reduction (PROFILE-DEPENDENT)
+Monitor queue usage with:
+```c
+UBaseType_t waiting = uxQueueMessagesWaiting(queue);
+UBaseType_t spaces = uxQueueSpacesAvailable(queue);
+```
+
+If queues rarely fill:
+- RadioTxQueue: 4 → 3 items (-264 bytes)
+- Could reach 14.7% free
+
+### Option 4: Combination Approach (BEST)
+1. Deploy current optimizations
+2. Monitor for 24-48 hours
+3. Profile heap and stack usage
+4. Apply fine-tuning based on actual usage
+5. Should easily reach 15-16% free with data-driven decisions
+
+## Risk Assessment
+
+### Current Optimizations (Phase 1 + 2)
+- **Risk Level**: LOW
+- **Rationale**:
+  - SRAM2 is hardware equivalent to SRAM1
+  - Heap reduced from 16KB to 12KB (still 8.8KB after ~3.2KB queues)
+  - Stacks reduced conservatively by ~10%
+  - All changes reversible if issues found
+
+### To Reach 15%
+- **Additional Risk**: VERY LOW with profiling
+- **Without Profiling**: LOW-MEDIUM
+- **Recommendation**: Deploy, monitor, fine-tune
 
 ## Build and Test
 

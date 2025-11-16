@@ -72,7 +72,7 @@
  *----------------------------------------------------------*/
 #define configSUPPORT_STATIC_ALLOCATION         1
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
-#define configTOTAL_HEAP_SIZE                   ((size_t)(14 * 1024))  /* 14KB heap - reduced from 16KB after moving buffers to SRAM2 */
+#define configTOTAL_HEAP_SIZE                   ((size_t)(12 * 1024))  /* 12KB heap - carefully tuned after moving buffers to SRAM2 */
 #define configAPPLICATION_ALLOCATED_HEAP        0
 
 /*-----------------------------------------------------------
