@@ -100,28 +100,31 @@ volatile uint16_t G_radio_addr_table_BER[RADIO_ADDR_TABLE_SIZE] = {0};
 /* TIM2 microsecond timer overflow counter */
 volatile uint32_t g_microsecond_timer_overflow = 0;
 
-/* Active buffer sizes - determined at runtime based on external SRAM */
-uint16_t RX_FIFO_SIZE_ACTIVE = RX_FIFO_SIZE_INTERNAL;
+/* Active buffer sizes - always use external SRAM (now mandatory) */
+uint16_t RX_FIFO_SIZE_ACTIVE = RX_FIFO_SIZE_EXTERNAL;
 
 /**
- * @brief Get active RX FIFO size based on SRAM configuration
+ * @brief Get active RX FIFO size (always external SRAM size)
  */
 uint16_t GetActiveRxFifoSize(void) {
-    return is_SRAM_ext ? RX_FIFO_SIZE_EXTERNAL : RX_FIFO_SIZE_INTERNAL;
+    /* External SRAM is mandatory, always return external size */
+    return RX_FIFO_SIZE_EXTERNAL;
 }
 
 /**
- * @brief Get active radio packet data size based on SRAM configuration
+ * @brief Get active radio packet data size (always external SRAM size)
  */
 uint16_t GetActiveRadioPacketDataSize(void) {
-    return is_SRAM_ext ? RADIO_PACKET_DATA_SIZE_EXTERNAL : RADIO_PACKET_DATA_SIZE_INTERNAL;
+    /* External SRAM is mandatory, always return external size */
+    return RADIO_PACKET_DATA_SIZE_EXTERNAL;
 }
 
 /**
- * @brief Get active ethernet packet data size based on SRAM configuration
+ * @brief Get active ethernet packet data size (always external SRAM size)
  */
 uint16_t GetActiveEthernetPacketDataSize(void) {
-    return is_SRAM_ext ? ETHERNET_PACKET_DATA_SIZE_EXTERNAL : ETHERNET_PACKET_DATA_SIZE_INTERNAL;
+    /* External SRAM is mandatory, always return external size */
+    return ETHERNET_PACKET_DATA_SIZE_EXTERNAL;
 }
 
 /**
@@ -150,8 +153,8 @@ void InitializeGlobalVariables(void)
 {
     int i;
     
-    /* Set active FIFO size based on external SRAM availability */
-    RX_FIFO_SIZE_ACTIVE = is_SRAM_ext ? RX_FIFO_SIZE_EXTERNAL : RX_FIFO_SIZE_INTERNAL;
+    /* Set active FIFO size to external SRAM size (mandatory) */
+    RX_FIFO_SIZE_ACTIVE = RX_FIFO_SIZE_EXTERNAL;
     
     /* Reset FIFO pointers */
     RX_FIFO_WR_point = 0;
@@ -159,17 +162,17 @@ void InitializeGlobalVariables(void)
     RX_FIFO_last_received = 0;
     RX_size_remaining = 0;
     
-    /* Clear FIFO data (internal RAM or external SRAM) */
+    /* Clear external SRAM RX FIFO area */
+    /* Note: This runs before scheduler, so ExtSRAM may not be init'd yet.
+     * The actual clearing should happen after SRAM init in main.c */
     if (is_SRAM_ext) {
         /* Clear external SRAM RX FIFO area - use external size */
         uint8_t zero_buf[256] = {0};
         for (uint32_t addr = 0; addr < RX_FIFO_SIZE_EXTERNAL; addr += 256) {
             ExtSRAM_Write(&hsram, zero_buf, SRAM_RX_FIFO_BASE_ADDR + addr, 256);
         }
-    } else {
-        /* Clear internal RAM - only clear the size we're actually using */
-        memset((void*)RX_FIFO_data, 0, RX_FIFO_SIZE_INTERNAL);
     }
+    /* Note: RX_FIFO_data in internal RAM is not used when external SRAM is present */
     
     /* Reset radio address table */
     for (i = 0; i < RADIO_ADDR_TABLE_SIZE; i++) {
@@ -192,56 +195,36 @@ void InitializeGlobalVariables(void)
 }
 
 /**
- * @brief Write data to RX FIFO (handles internal RAM or external SRAM)
+ * @brief Write data to RX FIFO (always uses external SRAM)
  */
 void RX_FIFO_Write(uint16_t offset, const uint8_t *data, uint16_t length) {
-    if (is_SRAM_ext) {
-        /* Write to external SRAM */
-        ExtSRAM_Write(&hsram, data, SRAM_RX_FIFO_BASE_ADDR + offset, length);
-    } else {
-        /* Write to internal RAM */
-        memcpy(&RX_FIFO_data[offset], data, length);
-    }
+    /* Always write to external SRAM (mandatory) */
+    ExtSRAM_Write(&hsram, data, SRAM_RX_FIFO_BASE_ADDR + offset, length);
 }
 
 /**
- * @brief Read data from RX FIFO (handles internal RAM or external SRAM)
+ * @brief Read data from RX FIFO (always uses external SRAM)
  */
 void RX_FIFO_Read(uint16_t offset, uint8_t *data, uint16_t length) {
-    if (is_SRAM_ext) {
-        /* Read from external SRAM */
-        ExtSRAM_Read(&hsram, data, SRAM_RX_FIFO_BASE_ADDR + offset, length);
-    } else {
-        /* Read from internal RAM */
-        memcpy(data, &RX_FIFO_data[offset], length);
-    }
+    /* Always read from external SRAM (mandatory) */
+    ExtSRAM_Read(&hsram, data, SRAM_RX_FIFO_BASE_ADDR + offset, length);
 }
 
 /**
- * @brief Write single byte to RX FIFO
+ * @brief Write single byte to RX FIFO (always uses external SRAM)
  */
 void RX_FIFO_WriteByte(uint16_t offset, uint8_t byte) {
-    if (is_SRAM_ext) {
-        /* Write to external SRAM */
-        ExtSRAM_Write(&hsram, &byte, SRAM_RX_FIFO_BASE_ADDR + offset, 1);
-    } else {
-        /* Write to internal RAM */
-        RX_FIFO_data[offset] = byte;
-    }
+    /* Always write to external SRAM (mandatory) */
+    ExtSRAM_Write(&hsram, &byte, SRAM_RX_FIFO_BASE_ADDR + offset, 1);
 }
 
 /**
- * @brief Read single byte from RX FIFO
+ * @brief Read single byte from RX FIFO (always uses external SRAM)
  */
 uint8_t RX_FIFO_ReadByte(uint16_t offset) {
     uint8_t byte;
-    if (is_SRAM_ext) {
-        /* Read from external SRAM */
-        ExtSRAM_Read(&hsram, &byte, SRAM_RX_FIFO_BASE_ADDR + offset, 1);
-    } else {
-        /* Read from internal RAM */
-        byte = RX_FIFO_data[offset];
-    }
+    /* Always read from external SRAM (mandatory) */
+    ExtSRAM_Read(&hsram, &byte, SRAM_RX_FIFO_BASE_ADDR + offset, 1);
     return byte;
 }
 

@@ -181,7 +181,7 @@ int main(void)
   printf("Boot: Watchdog initialized\r\n");
 
   /* Initialize is_SRAM_ext to default before use */
-  is_SRAM_ext = 0;  /* Default: use internal RAM */
+  is_SRAM_ext = 0;  /* Default: no SRAM detected yet */
 
   /* Initialize application globals (before FreeRTOS) */
   InitializeGlobalVariables();
@@ -206,26 +206,71 @@ int main(void)
   }
   printf("Boot: Mutexes created\r\n");
   
-  /* Initialize external SRAM early - BEFORE creating queues */
-  /* This determines buffer sizes for optimal RAM usage */
-  printf("Boot: Checking for external SRAM...\r\n");
+  /* Initialize and TEST external SRAM early - NOW MANDATORY */
+  /* External SRAM is REQUIRED for this firmware to operate */
+  printf("Boot: Checking for external SRAM (REQUIRED)...\r\n");
   hsram.hspi = &hspi3;
   hsram.cs_port = GPIOB;
   hsram.cs_pin = GPIO_PIN_0;
   hsram.spi_mutex = xSPI3Mutex;
   
-  is_SRAM_ext = (ExtSRAM_Init(&hsram) == HAL_OK) ? 1 : 0;
-  if (is_SRAM_ext) {
-    printf("Boot: External SRAM detected - using larger buffers\r\n");
-  } else {
-    printf("Boot: No external SRAM - using minimal buffers to fit in 64KB internal RAM\r\n");
+  HAL_StatusTypeDef sram_init_status = ExtSRAM_Init(&hsram);
+  HAL_StatusTypeDef sram_test_status = HAL_ERROR;
+  
+  if (sram_init_status == HAL_OK) {
+    /* SRAM initialized, now test read/write functionality */
+    printf("Boot: External SRAM init OK, testing read/write...\r\n");
+    sram_test_status = ExtSRAM_Test(&hsram);
   }
   
-  /* Create Queues with sizes based on SRAM availability */
-  /* Smaller queues when using internal RAM only to prevent OOM */
-  uint8_t radio_tx_queue_size = is_SRAM_ext ? RADIO_TX_QUEUE_SIZE_EXTERNAL : RADIO_TX_QUEUE_SIZE_INTERNAL;
-  uint8_t eth_rx_queue_size = is_SRAM_ext ? ETHERNET_RX_QUEUE_SIZE_EXTERNAL : ETHERNET_RX_QUEUE_SIZE_INTERNAL;
-  uint8_t eth_tx_queue_size = is_SRAM_ext ? ETHERNET_TX_QUEUE_SIZE_EXTERNAL : ETHERNET_TX_QUEUE_SIZE_INTERNAL;
+  if (sram_init_status != HAL_OK || sram_test_status != HAL_OK) {
+    /* FATAL: External SRAM is REQUIRED but not working */
+    printf("\r\n");
+    printf("========================================\r\n");
+    printf("FATAL ERROR: External SRAM NOT DETECTED\r\n");
+    printf("========================================\r\n");
+    printf("\r\n");
+    printf("This firmware REQUIRES external SPI SRAM (23LC1024 or compatible)\r\n");
+    printf("to operate. The external SRAM is used for:\r\n");
+    printf("  - RX FIFO buffer (2KB)\r\n");
+    printf("  - Packet buffers\r\n");
+    printf("  - Queue storage\r\n");
+    printf("\r\n");
+    printf("Hardware Configuration:\r\n");
+    printf("  - SRAM Chip: 23LC1024 (128KB SPI SRAM)\r\n");
+    printf("  - SPI Bus: SPI3\r\n");
+    printf("  - Chip Select: PB0\r\n");
+    printf("\r\n");
+    printf("Possible causes:\r\n");
+    printf("  1. External SRAM chip not installed\r\n");
+    printf("  2. Wiring/connection issue\r\n");
+    printf("  3. SPI3 configuration problem\r\n");
+    if (sram_init_status != HAL_OK) {
+      printf("  4. SRAM initialization failed\r\n");
+    } else {
+      printf("  4. SRAM read/write test failed\r\n");
+    }
+    printf("\r\n");
+    printf("System halted. Please install external SRAM and reboot.\r\n");
+    printf("========================================\r\n");
+    
+    /* Halt the system - cannot continue without SRAM */
+    while (1) {
+      /* Blink LED to indicate error state */
+      HAL_Delay(200);
+    }
+  }
+  
+  /* External SRAM is working! */
+  is_SRAM_ext = 1;  /* Mark as available for use */
+  printf("Boot: External SRAM detected and tested OK - using larger buffers\r\n");
+  printf("Boot: SRAM Size: 128KB (23LC1024)\r\n");
+  
+  /* Create Queues with EXTERNAL sizes (SRAM is mandatory) */
+  /* Always use larger queue sizes since we have external SRAM */
+  uint8_t radio_tx_queue_size = RADIO_TX_QUEUE_SIZE_EXTERNAL;
+  uint8_t eth_rx_queue_size = ETHERNET_RX_QUEUE_SIZE_EXTERNAL;
+  uint8_t eth_tx_queue_size = ETHERNET_TX_QUEUE_SIZE_EXTERNAL;
   
   printf("Boot: Creating queues (RadioTx=%d, EthRx=%d, EthTx=%d)...\r\n", 
          radio_tx_queue_size, eth_rx_queue_size, eth_tx_queue_size);
@@ -527,7 +572,8 @@ static void MX_TIM2_Init(void)
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim2.Init.Period = 0xFFFFFFFF;  /* 32-bit timer, max period */
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  /* AutoReloadPreload not available in mbed HAL version - skip it */
+  /* htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE; */
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
   {
     Error_Handler();

@@ -29,36 +29,35 @@ extern "C" {
 #include "ext_sram_driver.h"  /* For ExtSRAM_Context_t */
 
 /* Exported defines ----------------------------------------------------------*/
-#define FW_VERSION "2025_11_07-freertos-v1.0"
+#define FW_VERSION "2025_11_16-freertos-sram-mandatory"
 
 /* Radio configuration constants - from si4463_driver.h */
 #define RADIO_ADDR_TABLE_SIZE 4  /* Reduced from 16 to save heap (4×1600 = 6.4KB vs 25.6KB) */
 
-/* RX FIFO configuration - conditional based on external SRAM availability */
-/* When no external SRAM: use minimal buffers to fit in 64KB internal RAM */
-/* When external SRAM present: use larger buffers for better performance */
-#define RX_FIFO_SIZE_INTERNAL  0x200   /* 512B for internal RAM only mode */
-#define RX_FIFO_SIZE_EXTERNAL  0x800   /* 2KB when external SRAM available */
+/* RX FIFO configuration - EXTERNAL SRAM IS MANDATORY */
+/* Always use larger buffers since external SRAM is required */
+#define RX_FIFO_SIZE_INTERNAL  0x200   /* 512B (not used, kept for compatibility) */
+#define RX_FIFO_SIZE_EXTERNAL  0x800   /* 2KB - ALWAYS USED (external SRAM mandatory) */
 
-/* Active RX FIFO size - determined at runtime based on is_SRAM_ext */
+/* Active RX FIFO size - always external since SRAM is mandatory */
 extern uint16_t RX_FIFO_SIZE_ACTIVE;
-#define RX_FIFO_SIZE RX_FIFO_SIZE_INTERNAL  /* Compile-time size for static array (must be internal size) */
+#define RX_FIFO_SIZE RX_FIFO_SIZE_INTERNAL  /* Compile-time size for static array (legacy, not used) */
 #define RX_FIFO_MASK (RX_FIFO_SIZE - 1)
 
-/* Queue sizes - conditional based on external SRAM availability */
+/* Queue sizes - always use external sizes (SRAM mandatory) */
 #define RADIO_ISR_QUEUE_SIZE 8
-#define RADIO_TX_QUEUE_SIZE_INTERNAL     2   /* Minimal for internal RAM only */
-#define RADIO_TX_QUEUE_SIZE_EXTERNAL     4   /* Larger with external SRAM */
-#define ETHERNET_RX_QUEUE_SIZE_INTERNAL  1   /* Minimal for internal RAM only */
-#define ETHERNET_RX_QUEUE_SIZE_EXTERNAL  2   /* Larger with external SRAM */
-#define ETHERNET_TX_QUEUE_SIZE_INTERNAL  1   /* Minimal for internal RAM only */
-#define ETHERNET_TX_QUEUE_SIZE_EXTERNAL  2   /* Larger with external SRAM */
+#define RADIO_TX_QUEUE_SIZE_INTERNAL     2   /* Not used (kept for compatibility) */
+#define RADIO_TX_QUEUE_SIZE_EXTERNAL     4   /* Always used */
+#define ETHERNET_RX_QUEUE_SIZE_INTERNAL  1   /* Not used (kept for compatibility) */
+#define ETHERNET_RX_QUEUE_SIZE_EXTERNAL  2   /* Always used */
+#define ETHERNET_TX_QUEUE_SIZE_INTERNAL  1   /* Not used (kept for compatibility) */
+#define ETHERNET_TX_QUEUE_SIZE_EXTERNAL  2   /* Always used */
 
-/* Packet buffer sizes - conditional based on external SRAM */
-#define RADIO_PACKET_DATA_SIZE_INTERNAL   256  /* Reduced for internal RAM */
-#define RADIO_PACKET_DATA_SIZE_EXTERNAL   384  /* Full size with external SRAM */
-#define ETHERNET_PACKET_DATA_SIZE_INTERNAL 512 /* Reduced for internal RAM */
-#define ETHERNET_PACKET_DATA_SIZE_EXTERNAL 1600 /* Full MTU with external SRAM */
+/* Packet buffer sizes - always use external sizes (SRAM mandatory) */
+#define RADIO_PACKET_DATA_SIZE_INTERNAL   256  /* Not used (kept for compatibility) */
+#define RADIO_PACKET_DATA_SIZE_EXTERNAL   384  /* Always used */
+#define ETHERNET_PACKET_DATA_SIZE_INTERNAL 512 /* Not used (kept for compatibility) */
+#define ETHERNET_PACKET_DATA_SIZE_EXTERNAL 1600 /* Always used - full MTU */
 
 /* Exported types ------------------------------------------------------------*/
 
