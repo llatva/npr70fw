@@ -32,7 +32,9 @@ extern "C" {
  * - Total pages: 128 (0-127)
  * - We use last 2 pages for config (pages 126-127)
  */
-#define FLASH_PAGE_SIZE         2048
+#ifndef FLASH_PAGE_SIZE
+ #define FLASH_PAGE_SIZE         2048
+#endif
 #define FLASH_CONFIG_PAGE       126     /* Page 126 for main config */
 #define FLASH_CONFIG_BACKUP_PAGE 127    /* Page 127 for backup */
 #define FLASH_CONFIG_BASE_ADDR  (FLASH_BASE + (FLASH_CONFIG_PAGE * FLASH_PAGE_SIZE))
