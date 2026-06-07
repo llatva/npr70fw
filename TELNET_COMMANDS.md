@@ -197,8 +197,8 @@ Ham radio goodbye (Easter egg).
 
 ### Basic Configuration
 ```
-> set callsign OH3HZB
-Callsign set to OH3HZB
+> set callsign STATION1
+Callsign set to STATION1
 ready> set network_id 5
 Network ID set to 5
 ready> set frequency 437.000
