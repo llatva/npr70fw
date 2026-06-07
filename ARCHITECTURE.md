@@ -1,6 +1,6 @@
 # NPR-70 Firmware Architecture
 
-**Version**: 1.7 (June 7, 2026)  
+**Version**: 1.8 (June 7, 2026)  
 **Status**: Core protocol implementation complete - Ready for hardware testing
 
 This document describes the technical architecture of the NPR-70 modem firmware running on FreeRTOS 11.1.0 LTS. It covers the system design, task architecture, data flow, protocol implementation, and hardware interfaces.
@@ -98,10 +98,10 @@ External SRAM (128 KB):
 └── Reserved (~116 KB)            - Future expansion
 
 Flash (256 KB):
-├── Application Code (~69 KB)     - Firmware v1.7 with full routing
+├── Application Code (~70 KB)     - Firmware v1.8 with full routing + FDD downlink
 ├── HAL/Middleware (~50 KB)       - STM32 HAL, FreeRTOS kernel
 ├── Configuration Data (~2 KB)    - Settings stored in flash
-└── Available (~135 KB)           - Future features, firmware updates
+└── Available (~134 KB)           - Future features, firmware updates
 ```
 
 ---
@@ -211,7 +211,7 @@ static uint32_t last_rx_time[RADIO_ADDR_TABLE_SIZE];       // Idle timeout
 
 #### 4. Ethernet Task (Priority 4) — `task_ethernet.c`
 
-**Purpose**: Combined Ethernet RX/TX with IPv4 routing and segmentation.
+**Purpose**: Combined Ethernet RX/TX with IPv4 routing, segmentation, and FDD downlink injection.
 
 **Stack Size**: 200 words (800 bytes)
 
@@ -220,6 +220,7 @@ static uint32_t last_rx_time[RADIO_ADDR_TABLE_SIZE];       // Idle timeout
   - Poll W5500 sockets for incoming packets
   - Handle raw Ethernet frames (ARP)
   - Route IPv4 packets to radio via segmentation
+  - **FDD Downlink** (v1.8): Detect UDP port 6716, inject into RX FIFO
 - **TX Path**:
   - Receive reassembled IPv4 packets from xEthernetTxQueue
   - Send to W5500 with proper socket and Ethernet framing
@@ -228,6 +229,12 @@ static uint32_t last_rx_time[RADIO_ADDR_TABLE_SIZE];       // Idle timeout
   - Generate segmenter byte: `pkt_counter[4] | last_flag[1] | reserved[1] | seg_counter[3]`
   - Queue segments to xRadioTxQueue for transmission
   - FEC encoding applied by Radio task
+- **FDD Downlink Injection** (v1.8):
+  - Detect UDP packets to modem IP on port 6716 (in master FDD mode)
+  - Extract UDP payload containing raw radio packet data
+  - Inject into RX FIFO via `RX_FIFO_Write()`
+  - Notify radio task via xRadioISRQueue for processing
+  - Enables frequency-division duplex operation
 - **ARP Proxy**:
   - Respond to ARP requests for radio client IPs
   - Learn ARP mappings from incoming packets
@@ -980,12 +987,11 @@ LDFLAGS += -Wl,--gc-sections -Wl,-Map=build/NPR70_FreeRTOS.map
 
 ## Future Enhancements
 
-1. **FDD Downlink** (TODO-9): Inject UDP port 6716 packets into radio RX path
-2. **Power Management**: Sleep modes for battery operation
-3. **Firmware Update**: Bootloader for OTA updates
-4. **Extended Diagnostics**: Ring buffer logging, statistics collection
-5. **Performance Tuning**: Throughput optimization, latency reduction
-6. **Watchdog**: Independent watchdog implementation for reliability
+1. **Power Management**: Sleep modes for battery operation
+2. **Firmware Update**: Bootloader for OTA updates
+3. **Extended Diagnostics**: Ring buffer logging, statistics collection
+4. **Performance Tuning**: Throughput optimization, latency reduction
+5. **Watchdog**: Independent watchdog implementation for reliability
 
 ---
 

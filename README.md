@@ -2,7 +2,7 @@
 
 This repository contains the NPR-70 modem firmware ported from mbed OS to FreeRTOS.
 
-**🟢 BIDIRECTIONAL DATA PATH COMPLETE - READY FOR HARDWARE TEST** 
+**🟢 CORE PROTOCOL IMPLEMENTATION COMPLETE (v1.8) - READY FOR HARDWARE TEST** 
 
 ## Project Overview
 
@@ -30,6 +30,7 @@ This port migrates the original mbed OS-based firmware to FreeRTOS 11.1.0 LTS.
 - ✅ **Radio Control**: Complete SI4463 driver with TX/RX management, FEC (4,3) error correction
 - ✅ **Ethernet Bridge**: W5500 Ethernet controller with full bidirectional IPv4 routing
 - ✅ **Bidirectional Data Flow**: Complete Ethernet ↔ Radio ↔ IPv4 routing operational (v1.7)
+- ✅ **FDD Downlink**: UDP port 6716 packet injection for frequency-division duplex operation (v1.8)
 
 ### Network Services
 - ✅ **DHCP Server**: Dynamic IP allocation for radio clients with lease management
@@ -82,11 +83,11 @@ Priority 0: IDLE             - FreeRTOS idle task (configMINIMAL_STACK_SIZE)
 
 ## Build Information
 
-### Memory Usage (Version 1.7, with external SRAM - REQUIRED)
+### Memory Usage (Version 1.8, with external SRAM - REQUIRED)
 
 **Current Configuration (External SRAM Mandatory)**:
 ```
-Flash:  69,436 bytes / 256 KB  (26.4%) — includes full bidirectional routing
+Flash:  69,724 bytes / 256 KB  (26.6%) — includes full bidirectional routing + FDD downlink
 RAM:    48,192 bytes /  64 KB  (73.4%) — optimized with external SRAM offload
 Heap:   16,384 bytes (FreeRTOS, 16 KB)
 ```
@@ -325,16 +326,18 @@ Middleware/          - FreeRTOS kernel (v11.1.0 LTS)
 ## Testing Status
 
 ### Compilation Verified (✅ Complete)
-- ✅ Build system (clean compilation, 69KB flash, 48KB RAM)
+- ✅ Build system (clean compilation, 69.7KB flash, 48KB RAM)
 - ✅ Task creation and scheduling (9 tasks)
 - ✅ Memory allocation (heap optimized at 16KB)
 - ✅ External SRAM integration (boot-time validation)
 - ✅ FEC codec compilation (encode/decode paths)
 - ✅ Full bidirectional routing paths (TX and RX)
+- ✅ FDD downlink injection (UDP port 6716 handling)
 
 ### Protocol Implementation Status (✅ Complete)
 - ✅ **TX Path (Ethernet→Radio)**: IPv4 segmentation, FEC encoding, TDMA queuing
 - ✅ **RX Path (Radio→IPv4)**: FEC decoding, segment reassembly, protocol routing
+- ✅ **FDD Downlink**: UDP port 6716 packet injection for frequency-division duplex
 - ✅ **DHCP Server**: IP allocation, lease management, broadcast handling
 - ✅ **ARP Proxy**: Bidirectional address resolution for radio clients
 - ✅ **TDMA Protocol**: Master allocation frames, client parsing
@@ -375,14 +378,11 @@ Middleware/          - FreeRTOS kernel (v11.1.0 LTS)
 - **External SRAM Usage**: RX FIFO and packet buffers stored in external SRAM to free internal RAM
 
 ### Future Enhancements
-- FDD downlink packet handling (UDP port 6716 injection)
 - Power management / sleep modes for battery operation
 - Firmware update mechanism (bootloader/OTA)
 - Configuration save/restore to flash (partial implementation exists)
 - Extended diagnostics and logging
 - Performance optimization (throughput and latency tuning)
-- Extended diagnostics and logging
-- Packet fragmentation/reassembly for large packets in internal RAM mode
 
 ## License
 
@@ -400,6 +400,21 @@ FreeRTOS port: Copyright (c) 2025 Lasse OH3HZB
 - STM32L4 Series: STMicroelectronics
 
 ## Version History
+
+### 2026-06-07: FreeRTOS Port v1.8 - FDD Downlink Complete 🎉
+- **🟢 MILESTONE: All Core Protocol Implementation Complete**
+- **FDD Downlink Packet Handling** (TODO-9): UDP port 6716 injection into radio RX path
+  - Detects UDP packets to modem's IP on port 6716 in master FDD mode
+  - Extracts UDP payload containing raw radio packet data
+  - Injects payload into RX FIFO via `RX_FIFO_Write()`
+  - Notifies radio task via `xRadioISRQueue` to process injected packet
+  - Added `InjectFDDDownlink()` function with proper error checking
+  - Modified `ProcessIPv4Packet()` to handle FDD downlink before normal routing
+- **FDD Operation**: Allows master modem in FDD (Frequency Division Duplex) mode to receive downlink packets via Ethernet from another modem that's receiving them on a different frequency
+- **Implementation Details**: Validates payload size (5-400 bytes), only active in master mode with `CONF_radio.master_FDD == 1`
+- **Memory usage**: 69,724 bytes flash (26.6%), 48,192 bytes RAM (74%) — +288 bytes for FDD downlink
+- **All critical protocol layers operational**: TX path, RX path, FDD downlink, DHCP, ARP, TDMA, Signaling
+- **Ready for full hardware system testing**
 
 ### 2026-06-07: FreeRTOS Port v1.7 - Bidirectional Data Path Complete 🎉
 - **\ud83d\udfe2 MAJOR MILESTONE: Full bidirectional IPv4 routing operational**
@@ -511,7 +526,7 @@ FreeRTOS port: Copyright (c) 2025 Lasse OH3HZB
 
 ---
 
-**Status**: \ud83d\udfe2 Core protocol implementation complete - Ready for hardware testing (v1.7)  
+**Status**: 🟢 Core protocol implementation complete - Ready for hardware testing (v1.8)  
 **Last Update**: June 7, 2026  
 **Contact**: OH3HZB (FreeRTOS port), F4HDK (original firmware)
 
