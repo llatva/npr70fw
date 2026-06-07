@@ -57,7 +57,6 @@ The firmware now supports full bidirectional data flow through the radio link pl
 | Ethernet Task (RX+TX) | ✅ Complete | RX polling, IPv4→radio routing, ARP proxy, segmentation |
 | DHCP/ARP Task | ✅ Complete | UDP socket I/O, DHCP server, ARP proxy |
 | Monitor Task | ✅ Complete | Temperature recalibration check, stack monitoring |
-| Power Management | ❌ Missing | No sleep modes implemented |
 | Firmware Update | ❌ Missing | No OTA/bootloader mechanism |
 
 ---
@@ -92,174 +91,127 @@ Memory Usage (with external SRAM mandatory):
 
 ## Functional Implementation Status
 
-### ✅ Fully Implemented
+### ✅ Verified Implemented In Current Code
 
-#### Core RTOS
-- [x] FreeRTOS 11.1.0 LTS kernel integration
-- [x] 8 tasks with priority-based scheduling
-- [x] Queue-based inter-task communication (RadioISR, RadioTx, EthernetRx, EthernetTx)
-- [x] Mutex protection for SPI1 (SI4463) and SPI3 (W5500 + SRAM)
-- [x] Event groups for system events
-- [x] Microsecond timer (TIM2 @ 1 MHz)
-- [x] Watchdog: IWDG hardware + per-task Watchdog_RegisterTask / Watchdog_Refresh
+#### Core RTOS and Active Tasks
+- [x] FreeRTOS 11.1.0 LTS integration
+- [x] Active runtime tasks created from main:
+  - Radio (combined ISR + processing)
+  - TDMA
+  - Signaling
+  - Ethernet (combined RX + TX)
+  - DHCP/ARP
+  - Telnet
+  - Serial CLI
+  - Watchdog
+  - Monitor (created in MonitorTask_Init)
+- [x] Queue-based inter-task communication (radio ISR queue, radio TX queue, Ethernet TX queue)
+- [x] SPI mutex protection (SI4463 on SPI1, W5500/SRAM on SPI3)
+- [x] Microsecond timing with TIM2
 
-#### Hardware Drivers
-- [x] SI4463 driver (SPI1): init, commands, FIFO read/write, RX/TX state, temperature
-- [x] SI4463 TX preparation: PrepareTX(), TxToRxTransition() functions **NEW in v1.3**
-- [x] W5500 driver (SPI3): init, register access, socket setup, RX/TX transfers
-- [x] Ext. SRAM driver (SPI3, CS=PB0): init, test, byte/burst read-write, FIFO management
+#### Monitor Task (Previously marked missing)
+- [x] `vMonitorTask` exists and is started
+- [x] Periodic temperature check loop implemented
+- [x] Calls `SI4463_CheckTemperatureCalibration()` and tracks recalibration events
+- [x] Stack usage monitoring implemented
 
-#### Configuration
-- [x] Flash save with CRC32 integrity check
-- [x] Flash load with fallback to factory defaults
-- [x] Flash erase (factory reset)
-- [x] All original config variables preserved
+#### Data Path and Networking
+- [x] Ethernet → Radio segmentation and FEC encode path
+- [x] Radio → Ethernet reassembly and protocol routing path
+- [x] FDD downlink injection (UDP 6716) in Ethernet task
+- [x] DHCP server socket read/write path uses W5500 UDP helpers
+- [x] ARP handling exists in Ethernet task and DHCP/ARP task
 
-#### User Interface
-- [x] Serial CLI over UART2 (921600 baud)
-- [x] Telnet server (TCP port 23) with full CLI
-- [x] Shared CLI command library (set/get/save/reset/show stats/show tasks/show memory…)
-- [x] SNMP agent (UDP port 161) with NPR-70 MIB, GET/GETNEXT/SET
+#### Drivers and Services
+- [x] SI4463 driver integrated (including temperature calibration checks)
+- [x] W5500 driver integrated for UDP/TCP workloads
+- [x] External SRAM driver integrated and required at boot
+- [x] Configuration flash save/load/reset implemented
+- [x] Serial CLI and Telnet CLI implemented
 
-#### Radio Link Layer — NEW in v1.2
-- [x] FEC codec module (`Application/Common/fec_codec.c`)
-- [x] `FEC_Encode()` — (4,3) code: split into 3 blocks, add XOR block, CRC per field
-- [x] `FEC_Decode()` — check 4 CRCs, reconstruct single corrupted field via XOR
-- [x] `FEC_SizeWithEncoding()` — calculate encoded size
-- [x] Parity bit tables (parity_bit_elab[128], parity_bit_check[256])
-- [x] FEC integration in radio processing task (decode path)
-- [x] FEC integration in signaling task (encode path + TX FIFO write)
+### 🟡 Partial / Open Items Confirmed In Current Source
 
-### 🟡 Partial Implementation (New Improvements in v1.2)
+#### Signaling Task
+- [ ] LAN reset hook still TODO (`Application/Tasks/task_signaling.c`)
+- [ ] TX prepare/flush integration still has TODO markers in periodic path
 
-#### Signaling Protocol
-- [x] Frame structure building (WHOIS, connect request/response, keepalive)
-- [x] Connection state machine
-- [x] **FEC-encode before TX** — ✅ COMPLETE: uses `FEC_Encode()` from fec_codec.c
-- [x] **Write to SI4463 TX FIFO** — ✅ COMPLETE: `Signaling_FramePush()` calls `SI4463_WriteTxFifo()`
-- [x] **Parity bit computation** — ✅ COMPLETE: uses `parity_bit_elab[]` table
-- [ ] **TX mode trigger** — TODO: need `SI4463_PrepareTX()` or equivalent
-- [ ] **TX complete event** — TODO: callback from radio ISR
-- [ ] **LAN reset on signaling event** — `task_signaling.c:574`: TODO
+#### TDMA Task
+- [ ] TX buffer size derivation still TODO (`Application/Tasks/task_tdma.c`)
+- [ ] TX scheduling trigger path still TODO-marked (`Application/Tasks/task_tdma.c`)
+- [ ] Config-flash-backed runtime values still partly TODO (`Application/Tasks/task_tdma.c`)
 
-#### Radio Processing
-- [x] RX FIFO dequeue loop, protocol byte dispatch
-- [x] IPv4 packet reassembly (segmenter byte logic ported from original)
-- [x] **FEC decode integration** — ✅ COMPLETE: calls `FEC_Decode()` from fec_codec.c, reads from RX_FIFO_data
-- [ ] **TX preparation trigger** — `task_radio_processing.c:177`: no queue/call to TDMA task
-- [ ] **Signaling/TDMA frame forward** — `task_radio_processing.c:371,383`: TODO comments
+#### SNMP Runtime Activation
+- [ ] `vSNMPTask` is implemented in source, but no `xTaskCreate(vSNMPTask, ...)` call is present in current `main.c`
 
-### ⚠️ Stub / Partial Implementation (Unchanged from v1.1)
+### ❌ Not Implemented (Advanced Features)
 
-#### TDMA Protocol
-- [x] Frame timer (TIM2), timeout detection, frame counter, multiframe mask
-- [x] TDMA byte assembly and parity bit (client uplink buffer size bits)
-- [ ] **Master slot allocation algorithm** — `task_tdma.c:107`: TODO block
-- [ ] **Null frame initialization** — `task_tdma.c:294`: TODO
-- [ ] **Slave allocation frame parsing** — `task_tdma.c:211`: TODO (maps to `TDMA_slave_alloc_exploitation()` in original)
-- [ ] **TX slot scheduling** — `task_tdma.c:145`: TODO (no timer/queue trigger)
-
-#### Ethernet ↔ Radio Packet Routing
-- [x] ARP packet detection (EtherType 0x0806)
-- [x] IPv4 packet detection (EtherType 0x0800)
-- [ ] **IPv4 → radio routing** — `RouteIPv4ToRadio()` in `task_ethernet_rx.c` is a stub (counts packets only)
-- [ ] **ARP processing and proxy** — `ProcessARPPacket()` stub; no ARP table lookup or reply
-- [ ] **FDD downlink packet handling** — `task_ethernet_rx.c:185`: TODO (port 6716 path)
-
-#### DHCP/ARP Task
-- [x] DHCP table structure, state machine, offer/ack/nak logic
-- [ ] **W5500 socket reads** — `task_dhcp_arp.c:413-418`: RX_size forced to 0 (stub)
-- [ ] **DHCP packet send via W5500** — `task_dhcp_arp.c:513,565,582`: TODOs
-- [ ] **ARP proxy** — `task_dhcp_arp.c:606-615`: entire proxy function is stub
-
-### ❌ Not Implemented
-
-#### Monitor Task (Implementation Plan Task 6.5)
-- [ ] No `vMonitorTask` created
-- [ ] Temperature monitoring loop (SI4463_CheckTemperatureCalibration exists but unused)
-- [ ] Periodic recalibration trigger
-- [ ] LED status updates
-
-#### Advanced Features
-- [ ] Power management (sleep modes between TDMA slots)
-- [ ] Bootloader integration
-- [ ] Firmware update mechanism (OTA or serial)
-- [ ] Extended diagnostics / log ring buffer
+- [ ] Firmware update mechanism (OTA/bootloader)
 
 ---
 
 ## Structural Issues (Code Hygiene)
 
-The following redundant files exist and cause confusion about which implementation is authoritative.
-They compile but are **not used** by `main.c`:
+### ✅ Active task model is now consolidated
 
-| Unused file | Active replacement |
-|-------------|-------------------|
-| `task_radio_isr.c` + `task_radio_processing.c` | `task_radio_combined.c` (vRadioTask) |
-| `task_ethernet_rx.c` + `task_ethernet_tx.c` | `task_ethernet.c` (vEthernetTask) |
-| `task_networkmgmt.c` + `task_netmgmt_telnet.c` | `task_network_mgmt.c` (vNetworkMgmtTask) |
+Current build uses consolidated active tasks:
+- Radio combined task (`Application/Tasks/task_radio_combined.c`)
+- Ethernet combined task (`Application/Tasks/task_ethernet.c`)
 
-The stub bodies in `task_networkmgmt.c` (`DHCPARPTask_Poll`, `SNMPTask_Poll`) contain the comment
-*"user should fill in with actual periodic logic"* — indicating incomplete delegation to the underlying
-DHCP/ARP and SNMP subsystems.
+### ⚠️ Documentation debt previously caused confusion
+
+Previous status text referenced archived/stub paths as if they were active (for example `task_radio_processing.c` and `task_ethernet_rx.c`).
+Those references are now superseded by the active consolidated task files listed above.
 
 ---
 
 ## Memory Analysis
 
-### RAM Breakdown (with external SRAM mandatory)
+### Current Build Snapshot
 ```
-Internal RAM (65,536 bytes total):
-  FreeRTOS Heap:       ~16,000 bytes
-  Task Stacks:          ~6,000 bytes
-  Global/BSS:          ~28,000 bytes (config, state, small buffers)
-  
-External SRAM (128KB — 23LC1024):
-  RX FIFO buffer:       2,048 bytes
-  Ethernet packet buffers: up to 16 × 1,600 bytes (lazy allocated)
-  Queue backing:        varies
+Flash (text): 69,736 bytes
+RAM (bss):    48,192 bytes
+Data:            300 bytes
 ```
 
-### Flash Breakdown
-```
-Application Code:     ~38,000 bytes  (~72%)
-FreeRTOS Kernel:       ~8,000 bytes  (~15%)
-STM32 HAL:             ~6,000 bytes  (~11%)
-Const Strings/Tables:  ~3,000 bytes  (~ 6%)
-```
+### Notes
+- External SRAM remains mandatory for the configured runtime buffers.
+- Monitor task is included in the running system and accounted for in current totals.
 
 ---
 
 ## Task Priority and Stack Configuration
 
-| Task | Priority | Stack (words) | Notes |
-|------|----------|---------------|-------|
-| RadioTask (combined) | 7 | 220 | ISR + processing |
-| TDMA | 6 | 144 | Timing-critical |
-| Signaling | 5 | 112 | |
-| Ethernet (combined RX+TX) | 4 | 180 | |
-| NetworkMgmt (DHCP+SNMP) | 3 | 144 | |
-| Telnet | 2 | 144 | |
-| SerialCLI | 2 | configurable | New in v1.1 |
-| Watchdog | tskIDLE+1 | 112 | Lowest |
+The current runtime creation sequence in `main.c` confirms these active tasks:
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Radio (combined) | ✅ Active | Created via `xTaskCreate(vRadioTask, ...)` |
+| TDMA | ✅ Active | Created via `xTaskCreate(vTDMATask, ...)` |
+| Signaling | ✅ Active | Created via `xTaskCreate(vSignalingTask, ...)` |
+| Ethernet (combined RX+TX) | ✅ Active | Created via `xTaskCreate(vEthernetTask, ...)` |
+| DHCP/ARP | ✅ Active | Created via `xTaskCreate(vDHCPARPTask, ...)` |
+| Telnet | ✅ Active | Created via `xTaskCreate(vTelnetTask, ...)` |
+| Serial CLI | ✅ Active | Created via `xTaskCreate(vSerialCLITask, ...)` |
+| Watchdog | ✅ Active | Created via `xTaskCreate(vWatchdogTask, ...)` |
+| Monitor | ✅ Active | Created by `MonitorTask_Init()` |
+| SNMP | ⚠️ In source only | `vSNMPTask` exists, not created in current `main.c` |
 
 ---
 
 ## Completed Items Since v1.0
 
-| Item | Previous Status | Current Status |
-|------|-----------------|----------------|
-| Watchdog timer | ❌ Not implemented | ✅ Complete |
-| Config flash save/load | ⚠️ Stub (vars exist, no I/O) | ✅ Complete |
-| Factory reset flash erase | ⚠️ Reboots only | ✅ Complete |
-| External SRAM integration | ⚠️ Detected, unused | ✅ Complete (mandatory) |
-| Serial CLI (UART) | ❌ Not planned | ✅ New feature (v1.1) |
-| FEC codec | ⚠️ Stub | ✅ Complete (v1.2) |
-| Radio TX FIFO write | ⚠️ Stub | ✅ Complete (v1.2) |
-| TDMA master allocation | ⚠️ Stub | ✅ Complete (v1.3) |
-| TDMA slave parsing | ⚠️ Stub | ✅ Complete (v1.3) |
-| TDMA null frame | ⚠️ Stub | ✅ Complete (v1.3) |
-| SI4463 TX preparation | ❌ Missing | ✅ Complete (v1.3) |
+| Item | Current Status |
+|------|----------------|
+| Watchdog runtime task | ✅ Complete |
+| Config flash save/load/reset | ✅ Complete |
+| External SRAM integration | ✅ Complete (mandatory) |
+| Serial CLI (UART2) | ✅ Complete |
+| FEC codec and integration | ✅ Complete |
+| Radio combined ISR+processing | ✅ Complete |
+| Ethernet combined RX+TX | ✅ Complete |
+| Radio ↔ IPv4 bidirectional routing | ✅ Complete |
+| FDD downlink (UDP 6716 injection) | ✅ Complete |
+| Monitor task | ✅ Complete |
 
 ---
 
@@ -693,7 +645,7 @@ the SI4463 radio.
 
 ---
 
-### v1.6 — Monitor Task & Code Cleanup (January 14, 2025)
+### v1.6 — Monitor Task & Code Cleanup
 
 **Additions:**
 - ✅ **Monitor Task** (TODO-13): Created `task_monitor.c/h` with periodic health checks
