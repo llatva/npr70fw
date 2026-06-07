@@ -44,6 +44,7 @@ static uint32_t tx_error_count = 0;
 /* Private function prototypes -----------------------------------------------*/
 static void ProcessARPPacket(uint8_t *data, uint16_t size);
 static void ProcessIPv4Packet(uint8_t *data, uint16_t size);
+static void InjectFDDDownlink(uint8_t *udp_payload, uint16_t payload_size);
 static void RouteIPv4ToRadio(uint8_t *eth_frame, uint16_t size);
 static uint32_t IP_CharToInt(const uint8_t *ip_bytes);
 static uint8_t LookupClientIDFromIP(uint32_t ip_addr);
@@ -298,23 +299,87 @@ static void ProcessARPPacket(uint8_t *data, uint16_t size)
  * @brief Process IPv4 packet
  * @param data Pointer to Ethernet frame
  * @param size Frame size
+ * @note Handles FDD downlink (UDP port 6716) and normal IPv4 routing
  */
 static void ProcessIPv4Packet(uint8_t *data, uint16_t size)
 {
     uint8_t *ip_header = data + 14;  /* Skip Ethernet header */
     uint8_t protocol = ip_header[9];  /* Protocol field */
+    uint8_t ip_header_len = (ip_header[0] & 0x0F) * 4;  /* IHL field * 4 bytes */
+    uint32_t dest_IP_addr;
     uint16_t src_port = 0, dst_port = 0;
+    uint16_t udp_length;
+    uint8_t *udp_payload;
+    uint16_t payload_size;
     
-    if (protocol == IP_PROTO_UDP) {
-        uint8_t *udp_header = ip_header + (ip_header[0] & 0x0F) * 4;  /* Skip IP header */
+    /* Extract destination IP */
+    dest_IP_addr = IP_CharToInt(ip_header + 16);  /* Offset 16 in IP header */
+    
+    /* Check for UDP packets */
+    if (protocol == IP_PROTO_UDP && size >= (14 + ip_header_len + 8)) {
+        uint8_t *udp_header = ip_header + ip_header_len;
         src_port = (udp_header[0] << 8) | udp_header[1];
         dst_port = (udp_header[2] << 8) | udp_header[3];
+        udp_length = (udp_header[4] << 8) | udp_header[5];
         
-        if (dst_port == FDD_DOWN_PORT) {
-            /* Route to radio */
-            RouteIPv4ToRadio(data, size);
+        /* FDD Downlink: UDP packets to modem's IP on port 6716 */
+        /* Reference: source/Eth_IPv4.cpp lines 107-122 */
+        if (is_TDMA_master && 
+            CONF_radio.master_FDD == 1 && 
+            dest_IP_addr == LAN_conf_applied.LAN_modem_IP && 
+            dst_port == FDD_DOWN_PORT) {
+            
+            /* Extract UDP payload (skip UDP header = 8 bytes) */
+            udp_payload = udp_header + 8;
+            payload_size = udp_length - 8;  /* UDP length includes header */
+            
+            /* Sanity check payload size */
+            if (payload_size > 0 && payload_size <= 400) {
+                /* Inject into radio RX path */
+                InjectFDDDownlink(udp_payload, payload_size);
+                return;  /* FDD downlink handled, don't route normally */
+            }
         }
     }
+    
+    /* Normal IPv4 routing to radio */
+    RouteIPv4ToRadio(data, size);
+}
+
+/**
+ * @brief Inject FDD downlink packet into radio RX path
+ * @param udp_payload Pointer to UDP payload (raw radio packet data)
+ * @param payload_size Size of UDP payload
+ * @note Reference: source/L1L2_radio.cpp — FDDdown_RX_pckt_treat()
+ * 
+ * FDD (Frequency Division Duplex) downlink allows a master modem to receive
+ * downlink packets via Ethernet from another modem that's receiving them on
+ * a different frequency. The UDP payload contains a raw radio packet that
+ * is injected into the RX FIFO as if it was received from the SI4463.
+ */
+static void InjectFDDDownlink(uint8_t *udp_payload, uint16_t payload_size)
+{
+    RadioISREvent_t event;
+    
+    /* Sanity check: payload should contain at least frame_timer(3) + RSSI(1) + length(1) = 5 bytes */
+    if (payload_size < 5 || payload_size > 400) {
+        printf("FDD downlink: invalid payload size %u\r\n", payload_size);
+        return;
+    }
+    
+    /* Write payload to RX FIFO starting at offset 0 */
+    RX_FIFO_Write(0, udp_payload, payload_size);
+    
+    /* Reset read pointer and set last_received to trigger processing */
+    RX_FIFO_RD_point = 0;
+    RX_FIFO_last_received = payload_size;
+    
+    /* Notify radio task to process the injected packet */
+    event.event_type = 0;  /* RX event */
+    event.timestamp = HAL_GetTick();
+    xQueueSend(xRadioISRQueue, &event, 0);  /* Non-blocking send */
+    
+    printf("FDD downlink: injected %u bytes into RX FIFO\r\n", payload_size);
 }
 
 /**

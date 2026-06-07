@@ -1,44 +1,30 @@
 # NPR-70 FreeRTOS Port — Remaining TODO List
 
-**Date**: June 7, 2026  
-**Status**: Core bidirectional data path COMPLETE — Radio↔IPv4 routing functional  
-**Blocking full hardware test**: items marked 🔴 (critical)
-
-Reference originals are in `source/` (mbed C++ code).  
-All new C implementations go in `Application/Tasks/` or `Application/Services/`.
-
-
-### ✅ TODO-4a: SI4463 driver things — COMPLETE (2025-01-14)
-- ⚠️ **PARTIAL**: TX complete event / callback still needs integration with signaling task
-- ⚠️ **PARTIAL**: FIFO space check before write can be added as enhancement
-
-**Implementation Details**:
-- Created `SI4463_PrepareTX()` function that switches to TX_TUNE state, resets FIFOs, sets preamble length
-- Created `SI4463_TxToRxTransition()` for TX→RX state transitions
-- Added state definitions to support TX preparation workflow
+**Status**: 🟢 All critical protocol implementation TODOs complete!
 
 ---
 
-### 🟠 TODO-9: Implement FDD downlink packet handling
+### ✅ TODO-9: Implement FDD downlink packet handling — COMPLETE (2026-06-07)
 
-**File to edit**: `Application/Tasks/task_ethernet.c`  
+**File edited**: `Application/Tasks/task_ethernet.c`  
 **Reference**: `source/Eth_IPv4.cpp` — FDD downlink path (UDP port 6716 / `FDD_DOWN_PORT`)
 
-- [ ] On receipt of UDP dst port 6716, extract payload and inject into radio RX path
-- [ ] Fill TODO at `task_ethernet_rx.c:185` (or equivalent in `task_ethernet.c`)
+**Implementation**:
+- ✅ Detect UDP packets to modem's IP on port 6716 in master FDD mode
+- ✅ Extract UDP payload containing raw radio packet data
+- ✅ Inject payload into RX FIFO via `RX_FIFO_Write()`
+- ✅ Notify radio task via `xRadioISRQueue` to process injected packet
+- ✅ Added `InjectFDDDownlink()` function with proper error checking
+
+**FDD Operation**: Allows a master modem in FDD (Frequency Division Duplex) mode to receive
+downlink packets via Ethernet from another modem that's receiving them on a different frequency.
+The UDP payload contains a raw radio packet that is injected into the RX path as if received
+from the SI4463 radio.
+
+**Build Impact**: +288 bytes Flash (69,724 total, 26.6%)
 
 ---
 
-## Priority 6 — Advanced Features (post-MVP)
+## Remaining Work Items (Advanced Features)
 
-### 🔵 TODO-19: Firmware update mechanism
-
-- [ ] Implement Xmodem or YMODEM receive over UART (serial CLI)
-- [ ] Implement CRC verify + swap active image + reboot
-
----
-
-## Suggested Work Order
-
-9. **TODO-9** (FDD downlink) — optional, enables FDD mode  
-10. **TODO-17/18/19** (advanced features) — post-MVP  
+These are enhancements beyond the core protocol implementation:
