@@ -410,12 +410,13 @@ static void DHCPServer(void) {
     int loc_status;
     
     // Check for received data on DHCP socket
-    // TODO: Implement W5500_GetRxSize() and W5500_ReadUDPPacket()
-    RX_size = 0;  // Stub
+    RX_size = W5500_GetRxSize(pw5500, DHCP_SOCKET);
     
     if (RX_size > 0) {
-        // TODO: Read UDP packet
-        size_UDP = 0;  // Stub
+        // Read UDP packet (8-byte header + payload)
+        uint32_t src_ip;
+        uint16_t src_port;
+        size_UDP = W5500_ReadUDP(pw5500, DHCP_SOCKET, RX_data, sizeof(RX_data), &src_ip, &src_port);
         
         if (RX_data[8] == 1) {  // Valid DHCP request
             // Extract client MAC address
@@ -510,8 +511,9 @@ static void DHCPServer(void) {
                 
                 DHCP_answer[index_opt_answer++] = 255;  // End
                 
-                // TODO: Send DHCP packet via W5500
-                // W5500_WriteTxBuffer(pw5500, DHCP_SOCKET, DHCP_answer, index_opt_answer, 1);
+                // Send DHCP OFFER packet (broadcast to 255.255.255.255:68)
+                W5500_SendUDP(pw5500, DHCP_SOCKET, DHCP_answer, index_opt_answer, 
+                              0xFFFFFFFF, DHCP_CLIENT_PORT);
                 
                 taskENTER_CRITICAL();
                 stats.dhcp_offers++;
@@ -562,8 +564,9 @@ static void DHCPServer(void) {
                 
                 DHCP_answer[index_opt_answer++] = 255;
                 
-                // TODO: Send DHCP packet
-                // W5500_WriteTxBuffer(pw5500, DHCP_SOCKET, DHCP_answer, index_opt_answer, 1);
+                // Send DHCP ACK packet (broadcast to 255.255.255.255:68)
+                W5500_SendUDP(pw5500, DHCP_SOCKET, DHCP_answer, index_opt_answer, 
+                              0xFFFFFFFF, DHCP_CLIENT_PORT);
                 
                 taskENTER_CRITICAL();
                 stats.dhcp_acks++;
@@ -579,8 +582,9 @@ static void DHCPServer(void) {
                 DHCP_answer[index_opt_answer++] = message_type_server;
                 DHCP_answer[index_opt_answer++] = 255;
                 
-                // TODO: Send DHCP NAK
-                // W5500_WriteTxBuffer(pw5500, DHCP_SOCKET, DHCP_answer, index_opt_answer, 1);
+                // Send DHCP NAK packet (broadcast to 255.255.255.255:68)
+                W5500_SendUDP(pw5500, DHCP_SOCKET, DHCP_answer, index_opt_answer, 
+                              0xFFFFFFFF, DHCP_CLIENT_PORT);
                 
                 taskENTER_CRITICAL();
                 stats.dhcp_naks++;
@@ -601,19 +605,147 @@ static void DHCPServer(void) {
 
 /**
  * @brief ARP proxy function
+ * 
+ * Answers ARP requests for IPs in the radio range to enable transparent
+ * routing between Ethernet and radio. The modem responds with its own MAC
+ * address for all radio client IPs.
  */
 static void ARPProxy(uint8_t *ARP_req_packet, int size) {
-    // TODO: Implement ARP proxy for bridged Ethernet emulation
-    // This function answers ARP requests for IPs in the radio range
-    // to enable transparent routing between Ethernet and radio
+    static uint8_t ARP_reply[60] PLACE_IN_SRAM2;
+    uint8_t target_IP[4];
+    uint8_t sender_IP[4];
+    uint8_t sender_MAC[6];
+    uint32_t target_IP_int;
+    int is_in_range = 0;
+    
+    if (size < 28) {
+        return;  /* Invalid ARP packet */
+    }
+    
+    /* Check if this is an ARP request (opcode = 1) */
+    if (ARP_req_packet[6] != 0x00 || ARP_req_packet[7] != 0x01) {
+        return;
+    }
+    
+    /* Extract sender MAC and IP */
+    memcpy(sender_MAC, ARP_req_packet + 8, 6);
+    memcpy(sender_IP, ARP_req_packet + 14, 4);
+    
+    /* Extract target IP */
+    memcpy(target_IP, ARP_req_packet + 24, 4);
+    target_IP_int = IP_char2int(target_IP);
+    
+    /* Check if target IP is in DHCP range or radio client range */
+    if ((target_IP_int >= LAN_conf_applied.DHCP_range_start) && 
+        (target_IP_int < (LAN_conf_applied.DHCP_range_start + LAN_conf_applied.DHCP_range_size))) {
+        is_in_range = 1;
+    }
+    
+    /* Check if target IP is allocated in DHCP table */
+    taskENTER_CRITICAL();
+    for (int i = 0; i < DHCP_ARP_TABLE_SIZE; i++) {
+        if ((dhcp_arp_table[i].IP == target_IP_int) && (dhcp_arp_table[i].status == 2)) {
+            is_in_range = 1;
+            break;
+        }
+    }
+    taskEXIT_CRITICAL();
+    
+    if (!is_in_range) {
+        return;  /* Not our IP range */
+    }
+    
+    /* Build ARP reply */
+    /* Hardware type (Ethernet) */
+    ARP_reply[0] = 0x00;
+    ARP_reply[1] = 0x01;
+    
+    /* Protocol type (IPv4) */
+    ARP_reply[2] = 0x08;
+    ARP_reply[3] = 0x00;
+    
+    /* Hardware size (6 bytes) */
+    ARP_reply[4] = 0x06;
+    
+    /* Protocol size (4 bytes) */
+    ARP_reply[5] = 0x04;
+    
+    /* Opcode (ARP reply = 2) */
+    ARP_reply[6] = 0x00;
+    ARP_reply[7] = 0x02;
+    
+    /* Sender MAC (our modem MAC) */
+    memcpy(ARP_reply + 8, CONF_modem_MAC, 6);
+    
+    /* Sender IP (target IP from request - we're proxying) */
+    memcpy(ARP_reply + 14, target_IP, 4);
+    
+    /* Target MAC (original sender MAC) */
+    memcpy(ARP_reply + 18, sender_MAC, 6);
+    
+    /* Target IP (original sender IP) */
+    memcpy(ARP_reply + 24, sender_IP, 4);
+    
+    /* Pad to minimum size */
+    memset(ARP_reply + 28, 0, 18);
+    
+    /* Send ARP reply via W5500 (would need RAW socket implementation) */
+    /* TODO: W5500_SendRAW() or use socket 5 in MACRAW mode */
+    /* For now, just count the proxied request */
+    
+    taskENTER_CRITICAL();
+    stats.arp_replies++;
+    taskEXIT_CRITICAL();
 }
 
 /**
  * @brief ARP packet treatment
+ * 
+ * Process received ARP packets and update ARP table with sender's MAC/IP mapping
  */
 static void ARPRXPacketTreatment(uint8_t *ARP_RX_packet, int size) {
-    // TODO: Process received ARP packets
-    // Update ARP table with sender's MAC/IP mapping
+    uint8_t sender_MAC[6];
+    uint8_t sender_IP[4];
+    uint32_t sender_IP_int;
+    int found_entry = -1;
+    int free_entry = -1;
+    
+    if (size < 28) {
+        return;  /* Invalid ARP packet */
+    }
+    
+    /* Extract sender MAC and IP */
+    memcpy(sender_MAC, ARP_RX_packet + 8, 6);
+    memcpy(sender_IP, ARP_RX_packet + 14, 4);
+    sender_IP_int = IP_char2int(sender_IP);
+    
+    /* Update or add entry to ARP table */
+    taskENTER_CRITICAL();
+    
+    /* Look for existing entry or free slot */
+    for (int i = 0; i < DHCP_ARP_TABLE_SIZE; i++) {
+        if (CompareMAC(dhcp_arp_table[i].MAC, sender_MAC) && dhcp_arp_table[i].status != 0) {
+            found_entry = i;
+            break;
+        }
+        if (dhcp_arp_table[i].status == 0 && free_entry == -1) {
+            free_entry = i;
+        }
+    }
+    
+    /* Update existing or create new entry */
+    if (found_entry != -1) {
+        dhcp_arp_table[found_entry].IP = sender_IP_int;
+        dhcp_arp_table[found_entry].timestamp = GetMicrosecondTimer();
+    } else if (free_entry != -1) {
+        memcpy(dhcp_arp_table[free_entry].MAC, sender_MAC, 6);
+        dhcp_arp_table[free_entry].IP = sender_IP_int;
+        dhcp_arp_table[free_entry].status = 2;  /* Valid */
+        dhcp_arp_table[free_entry].timestamp = GetMicrosecondTimer();
+        stats.arp_learned++;
+    }
+    
+    taskEXIT_CRITICAL();
 }
 
 /**

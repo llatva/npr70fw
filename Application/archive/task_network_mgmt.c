@@ -12,6 +12,8 @@
   */
 
 #include "task_network_mgmt.h"
+#include "task_dhcp_arp.h"
+#include "task_snmp.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <string.h>

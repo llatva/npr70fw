@@ -104,6 +104,7 @@ int CONF_signaling_period = 3;              /* Default 3 seconds */
 uint32_t CONF_radio_timeout_small = 1000000; /* 1 second in microseconds */
 uint8_t CONF_radio_network_ID = 0;          /* Default network ID 0 */
 uint16_t CONF_frequency_HD = 17000;         /* Default 437.000 MHz (17MHz offset from 420MHz) */
+uint8_t CONF_modem_MAC[6] = {0x4E, 0x46, 0x50, 0x52, 0x00, 0x01}; /* NFPR:00:01 */
 
 /* Downlink signal quality */
 volatile uint8_t downlink_RSSI = 0;

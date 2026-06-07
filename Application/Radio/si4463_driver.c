@@ -554,6 +554,77 @@ HAL_StatusTypeDef SI4463_StartTx(SI4463_Context_t *ctx, uint8_t channel, uint16_
 }
 
 /**
+  * @brief  Prepare SI4463 for TX transmission
+  * @note   This switches radio to TX_TUNE state, resets FIFOs, and prepares for transmission
+  */
+HAL_StatusTypeDef SI4463_PrepareTX(SI4463_Context_t *ctx, uint8_t preamble_length)
+{
+    uint8_t rx_count, tx_count;
+    
+    if (ctx == NULL) {
+        return HAL_ERROR;
+    }
+    
+    /* Switch to TX_TUNE state (0x05) */
+    if (SI4463_ChangeState(ctx, 0x05) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    
+    /* Reset FIFOs */
+    if (SI4463_GetFifoStatus(ctx, &rx_count, &tx_count, 1) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    
+    /* Set preamble length */
+    if (SI4463_SetPreambleLength(ctx, preamble_length) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    
+    /* Clear interrupts */
+    if (SI4463_ClearInterrupts(ctx, 0xFF, 0xFF) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    
+    /* Update internal state */
+    ctx->rx_tx_state = SI4463_RXSTATE_PREP_TX;
+    
+    return HAL_OK;
+}
+
+/**
+  * @brief  Return SI4463 from TX to RX mode
+  * @note   Called after TX transmission completes
+  */
+HAL_StatusTypeDef SI4463_TxToRxTransition(SI4463_Context_t *ctx)
+{
+    uint8_t rx_count, tx_count;
+    
+    if (ctx == NULL) {
+        return HAL_ERROR;
+    }
+    
+    /* Reset FIFOs */
+    if (SI4463_GetFifoStatus(ctx, &rx_count, &tx_count, 1) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    
+    /* Clear interrupts */
+    if (SI4463_ClearInterrupts(ctx, 0xFF, 0xFF) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    
+    /* Start RX */
+    if (SI4463_StartRx(ctx, 0) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    
+    /* Update internal state */
+    ctx->rx_tx_state = SI4463_RXSTATE_RX;
+    
+    return HAL_OK;
+}
+
+/**
   * @brief  Read Fast Response Registers
   */
 HAL_StatusTypeDef SI4463_ReadFRR(SI4463_Context_t *ctx, uint8_t *data)

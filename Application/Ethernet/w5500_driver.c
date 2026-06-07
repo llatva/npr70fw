@@ -15,6 +15,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include <stdio.h>  /* For printf debugging */
+#include <string.h> /* For memcpy */
 
 /* Private defines */
 #define W5500_SPI_TIMEOUT       100  /* SPI timeout in ms */
@@ -206,7 +207,16 @@ uint16_t W5500_ReadWord(W5500_Context_t *ctx, uint16_t addr, uint8_t block)
     W5500_ReadData(ctx, addr, block, data, 2);
     return ((uint16_t)data[0] << 8) | data[1];
 }
-
+/**
+  * @brief  Write 16-bit word to W5500
+  */
+HAL_StatusTypeDef W5500_WriteWord(W5500_Context_t *ctx, uint16_t addr, uint8_t block, uint16_t data)
+{
+    uint8_t buf[2];
+    buf[0] = (data >> 8) & 0xFF;
+    buf[1] = data & 0xFF;
+    return W5500_WriteData(ctx, addr, block, buf, 2);
+}
 /**
   * @brief  Get received data size for a socket
   * @note   Read twice to ensure stable value (W5500 requirement)
@@ -496,6 +506,118 @@ HAL_StatusTypeDef W5500_ConfigureAppSockets(W5500_Context_t *ctx)
     /* Socket 4: Telnet Server (TCP port 23) */
     if (W5500_InitTCPServerSocket(ctx, W5500_SOCK_TELNET, 23) != HAL_OK) {
         return HAL_ERROR;
+    }
+    
+    return HAL_OK;
+}
+
+/**
+  * @brief  Read UDP packet from socket (with source IP and port)
+  * @param  ctx: Pointer to W5500 context
+  * @param  sock: Socket number (0-7)
+  * @param  data: Pointer to receive buffer
+  * @param  len: Maximum buffer size
+  * @param  src_ip: Pointer to store source IP (4 bytes)
+  * @param  src_port: Pointer to store source port
+  * @retval Number of bytes read (payload only, excluding 8-byte header)
+  */
+uint16_t W5500_ReadUDP(W5500_Context_t *ctx, uint8_t sock, uint8_t *data, uint16_t len,
+                       uint32_t *src_ip, uint16_t *src_port)
+{
+    uint16_t read_ptr;
+    uint16_t payload_size;
+    uint8_t header[8];
+    uint8_t block = W5500_SOCKET_REG_BLOCK(sock);
+    
+    if (ctx == NULL || data == NULL) {
+        return 0;
+    }
+    
+    /* Get current read pointer */
+    read_ptr = W5500_ReadWord(ctx, W5500_Sn_RX_RD0, block);
+    
+    /* Read 8-byte UDP header: [src_IP(4)][src_port(2)][size(2)] */
+    W5500_ReadData(ctx, read_ptr, W5500_RX_BUFFER_BLOCK(sock), header, 8);
+    
+    /* Extract source IP */
+    if (src_ip != NULL) {
+        *src_ip = (header[0] << 24) | (header[1] << 16) | (header[2] << 8) | header[3];
+    }
+    
+    /* Extract source port */
+    if (src_port != NULL) {
+        *src_port = (header[4] << 8) | header[5];
+    }
+    
+    /* Extract payload size */
+    payload_size = (header[6] << 8) | header[7];
+    
+    /* Limit to buffer size */
+    if (payload_size > (len - 8)) {
+        payload_size = len - 8;
+    }
+    
+    /* Read payload */
+    W5500_ReadData(ctx, read_ptr + 8, W5500_RX_BUFFER_BLOCK(sock), data + 8, payload_size);
+    
+    /* Copy header to data buffer (for compatibility) */
+    memcpy(data, header, 8);
+    
+    /* Update read pointer */
+    read_ptr += (8 + payload_size);
+    W5500_WriteWord(ctx, W5500_Sn_RX_RD0, block, read_ptr);
+    
+    /* Issue RECV command */
+    W5500_WriteByte(ctx, W5500_Sn_CR, block, W5500_Sn_CR_RECV);
+    
+    return payload_size;
+}
+
+/**
+  * @brief  Send UDP packet to destination IP and port
+  * @param  ctx: Pointer to W5500 context
+  * @param  sock: Socket number (0-7)
+  * @param  data: Pointer to transmit buffer
+  * @param  len: Number of bytes to send
+  * @param  dst_ip: Destination IP address (32-bit)
+  * @param  dst_port: Destination port
+  * @retval HAL status
+  */
+HAL_StatusTypeDef W5500_SendUDP(W5500_Context_t *ctx, uint8_t sock, const uint8_t *data, 
+                                 uint16_t len, uint32_t dst_ip, uint16_t dst_port)
+{
+    uint8_t block = W5500_SOCKET_REG_BLOCK(sock);
+    uint16_t timeout = 0;
+    
+    if (ctx == NULL || data == NULL) {
+        return HAL_ERROR;
+    }
+    
+    /* Set destination IP address */
+    W5500_WriteByte(ctx, W5500_Sn_DIPR0, block, (dst_ip >> 24) & 0xFF);
+    W5500_WriteByte(ctx, W5500_Sn_DIPR0 + 1, block, (dst_ip >> 16) & 0xFF);
+    W5500_WriteByte(ctx, W5500_Sn_DIPR0 + 2, block, (dst_ip >> 8) & 0xFF);
+    W5500_WriteByte(ctx, W5500_Sn_DIPR0 + 3, block, dst_ip & 0xFF);
+    
+    /* Set destination port */
+    W5500_WriteByte(ctx, W5500_Sn_DPORT0, block, (dst_port >> 8) & 0xFF);
+    W5500_WriteByte(ctx, W5500_Sn_DPORT0 + 1, block, dst_port & 0xFF);
+    
+    /* Send data */
+    if (W5500_SendData(ctx, sock, data, len) != HAL_OK) {
+        return HAL_ERROR;
+    }
+    
+    /* Issue SEND command */
+    W5500_WriteByte(ctx, W5500_Sn_CR, block, W5500_Sn_CR_SEND);
+    
+    /* Wait for command to complete */
+    while (W5500_ReadByte(ctx, W5500_Sn_CR, block) != 0) {
+        vTaskDelay(1);
+        timeout++;
+        if (timeout > 100) {
+            return HAL_TIMEOUT;
+        }
     }
     
     return HAL_OK;

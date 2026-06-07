@@ -33,9 +33,10 @@
 #include "task_tdma.h"
 #include "task_signaling.h"
 #include "task_ethernet.h"
-#include "task_networkmgmt.h"
+#include "task_dhcp_arp.h"
 #include "task_telnet.h"
 #include "task_serial_cli.h"
+#include "task_monitor.h"
 #include "w5500_driver.h"
 #include "si4463_driver.h"
 #include "ext_sram_driver.h"
@@ -386,14 +387,17 @@ int main(void)
   
   printf("  - EthernetTask_Init...\r\n");
   EthernetTask_Init(&hw5500);
-  printf("  - NetworkMgmtTask_Init...\r\n");
-  NetworkMgmtTask_Init(&hw5500);
+  printf("  - DHCPARPTask_Init...\r\n");
+  DHCPARPTask_Init(&hw5500);
   
   printf("  - TelnetTask_Init...\r\n");
   TelnetTask_Init(&hw5500);
   
   printf("  - SerialCLI_Init...\r\n");
   SerialCLI_Init(&huart2);
+  
+  printf("  - MonitorTask_Init...\r\n");
+  MonitorTask_Init(&hsi4463);
   
   printf("Boot: Task modules initialized\r\n");
 
@@ -421,8 +425,9 @@ int main(void)
     Error_Handler();
   }
   /* Combined NetworkMgmt task (DHCP/ARP + SNMP) */
-  if (xTaskCreate(vNetworkMgmtTask, "NetMgmt", 144, NULL, PRIORITY_DHCP_ARP, NULL) != pdPASS) {
-    printf("FATAL: Failed to create NetworkMgmt task!\r\n");
+  /* DHCP/ARP task */
+  if (xTaskCreate(vDHCPARPTask, "DHCP/ARP", 144, NULL, PRIORITY_DHCP_ARP, NULL) != pdPASS) {
+    printf("FATAL: Failed to create DHCP/ARP task!\\r\\n");
     Error_Handler();
   }
   if (xTaskCreate(vTelnetTask, "Telnet", 144, NULL, PRIORITY_TELNET, &xTelnetTask) != pdPASS) {
@@ -441,6 +446,10 @@ int main(void)
     printf("FATAL: Failed to create Watchdog task!\r\n");
     Error_Handler();
   }
+  
+  /* Monitor task - lowest priority, periodic health checks */
+  /* Note: MonitorTask_Init already created the task, no xTaskCreate needed here */
+  
   printf("Boot: All tasks created successfully\r\n");
 
   /* Start scheduler */

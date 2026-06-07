@@ -60,6 +60,7 @@
 #define SI4463_RXSTATE_IDLE             0
 #define SI4463_RXSTATE_RX               1
 #define SI4463_RXSTATE_TX               2
+#define SI4463_RXSTATE_PREP_TX          3
 
 /* CTS timeout values */
 #define SI4463_CTS_TIMEOUT_SHORT        200
@@ -117,6 +118,8 @@ HAL_StatusTypeDef SI4463_ReadRxFifo(SI4463_Context_t *ctx, uint8_t *data, uint8_
 /* Function prototypes - TX/RX control */
 HAL_StatusTypeDef SI4463_StartRx(SI4463_Context_t *ctx, uint8_t channel);
 HAL_StatusTypeDef SI4463_StartTx(SI4463_Context_t *ctx, uint8_t channel, uint16_t size);
+HAL_StatusTypeDef SI4463_PrepareTX(SI4463_Context_t *ctx, uint8_t preamble_length);
+HAL_StatusTypeDef SI4463_TxToRxTransition(SI4463_Context_t *ctx);
 
 /* Function prototypes - Fast Response Registers */
 HAL_StatusTypeDef SI4463_ReadFRR(SI4463_Context_t *ctx, uint8_t *data);

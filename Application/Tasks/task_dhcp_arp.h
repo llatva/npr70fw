@@ -43,6 +43,7 @@ typedef struct {
     uint32_t dhcp_naks;         /* DHCP NAK messages sent */
     uint32_t arp_requests;      /* ARP requests received */
     uint32_t arp_replies;       /* ARP replies sent */
+    uint32_t arp_learned;       /* ARP entries learned from packets */
     uint32_t table_entries;     /* Current DHCP/ARP table entries */
     uint32_t table_timeouts;    /* Table entry timeouts */
 } DHCPARPStats_t;

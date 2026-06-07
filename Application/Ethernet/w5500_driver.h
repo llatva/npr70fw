@@ -194,6 +194,16 @@ HAL_StatusTypeDef W5500_WriteByte(W5500_Context_t *ctx, uint16_t addr, uint8_t b
 uint16_t W5500_ReadWord(W5500_Context_t *ctx, uint16_t addr, uint8_t block);
 
 /**
+  * @brief  Write 16-bit word to W5500
+  * @param  ctx: Pointer to W5500 context
+  * @param  addr: Register address (16-bit)
+  * @param  block: Block select byte
+  * @param  data: 16-bit word value to write
+  * @retval HAL status
+  */
+HAL_StatusTypeDef W5500_WriteWord(W5500_Context_t *ctx, uint16_t addr, uint8_t block, uint16_t data);
+
+/**
   * @brief  Get received data size for a socket
   * @param  ctx: Pointer to W5500 context
   * @param  sock: Socket number (0-7)
@@ -277,6 +287,32 @@ HAL_StatusTypeDef W5500_InitTCPServerSocket(W5500_Context_t *ctx, uint8_t sock, 
   * @retval HAL status
   */
 HAL_StatusTypeDef W5500_ConfigureAppSockets(W5500_Context_t *ctx);
+
+/**
+  * @brief  Read UDP packet from socket (with source IP and port)
+  * @param  ctx: Pointer to W5500 context
+  * @param  sock: Socket number (0-7)
+  * @param  data: Pointer to receive buffer
+  * @param  len: Maximum buffer size
+  * @param  src_ip: Pointer to store source IP (4 bytes)
+  * @param  src_port: Pointer to store source port
+  * @retval Number of bytes read (payload only, excluding 8-byte header)
+  */
+uint16_t W5500_ReadUDP(W5500_Context_t *ctx, uint8_t sock, uint8_t *data, uint16_t len,
+                       uint32_t *src_ip, uint16_t *src_port);
+
+/**
+  * @brief  Send UDP packet to destination IP and port
+  * @param  ctx: Pointer to W5500 context
+  * @param  sock: Socket number (0-7)
+  * @param  data: Pointer to transmit buffer
+  * @param  len: Number of bytes to send
+  * @param  dst_ip: Destination IP address (32-bit)
+  * @param  dst_port: Destination port
+  * @retval HAL status
+  */
+HAL_StatusTypeDef W5500_SendUDP(W5500_Context_t *ctx, uint8_t sock, const uint8_t *data, 
+                                 uint16_t len, uint32_t dst_ip, uint16_t dst_port);
 
 #ifdef __cplusplus
 }

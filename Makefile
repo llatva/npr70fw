@@ -48,24 +48,17 @@ C_SOURCES += Application/Memory/config_flash.c
 C_SOURCES += Application/Common/app_common.c
 C_SOURCES += Application/Common/fec_codec.c
 C_SOURCES += Application/Common/watchdog.c
-C_SOURCES += Application/Tasks/task_radio_isr.c
-C_SOURCES += Application/Tasks/task_radio_processing.c
-C_SOURCES += Application/Tasks/task_tdma.c
 
-# Combined radio task replaces separate ISR + processing units
-C_SOURCES := $(filter-out Application/Tasks/task_radio_isr.c,$(C_SOURCES))
-C_SOURCES := $(filter-out Application/Tasks/task_radio_processing.c,$(C_SOURCES))
+# Task sources (combined implementations only)
 C_SOURCES += Application/Tasks/task_radio_combined.c
-
-C_SOURCES += Application/Tasks/task_ethernet_rx.c
-C_SOURCES += Application/Tasks/task_ethernet_tx.c
+C_SOURCES += Application/Tasks/task_tdma.c
 C_SOURCES += Application/Tasks/task_signaling.c
 C_SOURCES += Application/Tasks/task_dhcp_arp.c
 C_SOURCES += Application/Tasks/task_snmp.c
 C_SOURCES += Application/Tasks/task_telnet.c
 C_SOURCES += Application/Tasks/task_serial_cli.c
 C_SOURCES += Application/Tasks/task_ethernet.c
-C_SOURCES += Application/Tasks/task_networkmgmt.c
+C_SOURCES += Application/Tasks/task_monitor.c
 
 # Common/shared modules
 C_SOURCES += Application/Common/cli_commands.c

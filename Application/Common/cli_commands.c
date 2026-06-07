@@ -9,7 +9,8 @@
 #include "cli_commands.h"
 #include "app_common.h"
 #include "config_flash.h"
-#include "task_radio_processing.h"
+#include "task_radio_combined.h"
+#include "main.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <string.h>

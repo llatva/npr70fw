@@ -25,6 +25,7 @@ void TDMATask_Init(SI4463_Context_t *si4463_ctx);
 /* Utility functions */
 void TDMA_NULL_frame_init(int size);
 void TDMA_init_TA(uint8_t client_ID, int TA_input);
+void TDMA_ProcessAllocation(const uint8_t *alloc_data, uint16_t size);
 
 /* External TIM2 handle */
 extern TIM_HandleTypeDef htim2;
