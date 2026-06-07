@@ -56,7 +56,7 @@ The firmware now supports full bidirectional data flow through the radio link. A
 
 ## Build Status
 
-### Current Build Results (v1.5)
+### Current Build Results (v1.7)
 ```
 Compilation: ✅ SUCCESS (no errors)
 Warnings:    ⚠️  Minor (FLASH_PAGE_SIZE redefinition, unused variables in other modules)
