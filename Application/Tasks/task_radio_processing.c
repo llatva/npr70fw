@@ -14,6 +14,7 @@
 
 #include "task_radio_processing.h"
 #include "app_common.h"
+#include "fec_codec.h"
 #include "w5500_driver.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -26,26 +27,6 @@
 #define PROTOCOL_SIGNALING      0x1E
 #define PROTOCOL_TDMA_ALLOC     0x1F
 #define PROTOCOL_NULL           0x00
-
-/* Parity bit lookup table (7-bit input) */
-static const uint8_t parity_bit_check[256] = {
-    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1,
-    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-    0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0,
-    1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1
-};
 
 /* Private variables ---------------------------------------------------------*/
 static W5500_Context_t *hw5500 = NULL;
@@ -70,7 +51,6 @@ static uint32_t last_rframe_seen = 0;
 extern uint8_t my_radio_client_ID;  /* Defined in global config */
 
 /* Private function prototypes -----------------------------------------------*/
-static int FEC_Decode(uint8_t *data_out, uint8_t *data_in, int size_in, uint32_t *micro_BER);
 static void ProcessIPv4Packet(uint8_t client_ID, uint8_t *data, uint16_t size);
 static void ProcessSignalingFrame(uint8_t *data, uint16_t size, int32_t TA);
 static void ProcessTDMAAllocation(uint8_t *data, uint16_t size);
@@ -150,15 +130,12 @@ void vRadioProcessingTask(void *argument)
             tdma_byte = RX_FIFO_ReadByte(RX_FIFO_RD_point & RX_FIFO_MASK);
             RX_FIFO_RD_point++;
             
+            /* Peek at client and protocol bytes (they're inside FEC-encoded data) */
             client_byte = RX_FIFO_ReadByte(RX_FIFO_RD_point & RX_FIFO_MASK);
             protocol_byte = RX_FIFO_ReadByte((RX_FIFO_RD_point + 1) & RX_FIFO_MASK);
             
-            /* Read packet data from FIFO */
-            size_w_FEC = rframe_length - 1;  /* Subtract TDMA byte */
-            for (uint16_t i = 0; i < size_w_FEC && i < sizeof(data_RX); i++) {
-                data_RX[i] = RX_FIFO_ReadByte(RX_FIFO_RD_point & RX_FIFO_MASK);
-                RX_FIFO_RD_point++;
-            }
+            /* Calculate FEC-encoded data size (subtract TDMA byte) */
+            size_w_FEC = rframe_length - 1;
             
             taskEXIT_CRITICAL();
             
@@ -179,8 +156,8 @@ void vRadioProcessingTask(void *argument)
             }
             last_rframe_seen = GetMicrosecondTimer();
             
-            /* FEC decode */
-            size_wo_FEC = FEC_Decode(data_RX, data_RX, size_w_FEC, &micro_BER);
+            /* FEC decode - reads from RX_FIFO_data at RX_FIFO_RD_point, outputs to data_RX */
+            size_wo_FEC = FEC_Decode(data_RX, size_w_FEC, &micro_BER);
             
             /* Process valid decoded packets */
             if (size_wo_FEC > 0) {
@@ -296,43 +273,6 @@ void vRadioProcessingTask(void *argument)
             FreeIdleBuffers();
         }
     }
-}
-
-/**
- * @brief Simplified FEC decode (placeholder - full implementation needed)
- * @param data_out Output decoded data
- * @param data_in Input FEC-encoded data
- * @param size_in Input size
- * @param micro_BER Output bit error rate (micro BER)
- * @return Decoded size (0 if decode failed)
- */
-static int FEC_Decode(uint8_t *data_out, uint8_t *data_in, int size_in, uint32_t *micro_BER)
-{
-    /* TODO: Implement actual FEC decoding
-     * For now, simple pass-through with basic parity check
-     * Real implementation should use proper FEC algorithm from original code
-     */
-    
-    *micro_BER = 0;
-    
-    /* Basic validation */
-    if (size_in < 2) {
-        return 0;
-    }
-    
-    /* For now, assume no FEC and just copy data */
-    /* Real code should decode based on FEC rate configured */
-    int decoded_size = (size_in * 2) / 3;  /* Rough estimate for FEC 2/3 */
-    
-    if (decoded_size > size_in) {
-        decoded_size = size_in;
-    }
-    
-    if (data_out != data_in) {
-        memmove(data_out, data_in, decoded_size);
-    }
-    
-    return decoded_size;
 }
 
 /**

@@ -21,6 +21,7 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include <stdint.h>
+#include "si4463_driver.h"
 
 /* Exported constants --------------------------------------------------------*/
 #define SIGNALING_TASK_STACK_SIZE       (512)
@@ -48,9 +49,10 @@ typedef struct {
 
 /**
  * @brief Initialize Signaling Task
+ * @param si4463_ctx Pointer to SI4463 radio context
  * @retval 0 on success, -1 on error
  */
-int SignalingTask_Init(void);
+int SignalingTask_Init(SI4463_Context_t *si4463_ctx);
 
 /**
  * @brief Signaling Task main function

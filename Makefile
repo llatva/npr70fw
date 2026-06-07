@@ -46,6 +46,7 @@ C_SOURCES += Application/Radio/si4463_driver.c
 C_SOURCES += Application/Memory/ext_sram_driver.c
 C_SOURCES += Application/Memory/config_flash.c
 C_SOURCES += Application/Common/app_common.c
+C_SOURCES += Application/Common/fec_codec.c
 C_SOURCES += Application/Common/watchdog.c
 C_SOURCES += Application/Tasks/task_radio_isr.c
 C_SOURCES += Application/Tasks/task_radio_processing.c

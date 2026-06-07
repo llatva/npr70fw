@@ -21,6 +21,7 @@
 #include <stdio.h>
 
 #include "app_common.h"
+#include "fec_codec.h"
 #include "si4463_driver.h"
 #include "w5500_driver.h"
 #include "task_tdma.h"
@@ -29,6 +30,7 @@
 #define SIGNALING_PERIOD_MS         (CONF_signaling_period * 2000)  // 2x config period in ms
 #define MAX_SIGNALING_FRAME_SIZE    (260)
 #define MAX_RFRAME_SIZE             (380)
+#define MAX_FEC_ENCODED_SIZE        (400)  /* FEC encoding overhead ~4/3, plus padding */
 
 /* Private typedef -----------------------------------------------------------*/
 /* Client connection states (used with my_client_radio_connexion_state):
@@ -43,10 +45,12 @@
 /* Private variables ---------------------------------------------------------*/
 static TaskHandle_t xSignalingTaskHandle = NULL;
 static SignalingStats_t stats = {0};
+static SI4463_Context_t *hsi4463 = NULL;  /* SI4463 radio context */
 
 // Signaling frame buffers
 static uint8_t rframe_TX[MAX_RFRAME_SIZE];
 static uint8_t TX_signal_frame_raw[MAX_SIGNALING_FRAME_SIZE];
+static uint8_t TX_signal_frame_FEC[MAX_FEC_ENCODED_SIZE];  /* FEC encoded buffer */
 static int TX_signal_frame_point = 0;
 
 // Client state machine
@@ -113,7 +117,10 @@ static void IP_int2char(uint32_t ip, uint8_t *ip_bytes) {
 /**
  * @brief Initialize Signaling Task
  */
-int SignalingTask_Init(void) {
+int SignalingTask_Init(SI4463_Context_t *si4463_ctx) {
+    /* Store SI4463 context */
+    hsi4463 = si4463_ctx;
+    
     // Reset statistics
     memset(&stats, 0, sizeof(stats));
     
@@ -665,8 +672,8 @@ static void Signaling_FrameInit(void) {
     if (is_TDMA_master) {
         TX_signal_frame_raw[0] = 0xFF;  // Broadcast address (plus parity bit)
     } else {
-        // TODO: Add parity bit computation
-        TX_signal_frame_raw[0] = my_radio_client_ID;  // Slave address
+        /* Add parity bit to client ID (7-bit value, bit 7 = even parity) */
+        TX_signal_frame_raw[0] = my_radio_client_ID + parity_bit_elab[my_radio_client_ID & 0x7F];
     }
     TX_signal_frame_raw[1] = 0x1E;  // Protocol = signaling
     TX_signal_frame_point = 2;
@@ -762,39 +769,67 @@ static void Signaling_FramePush(void) {
     int size_w_FEC;
     uint8_t rframe_length;
     uint32_t timer_snapshot;
+    HAL_StatusTypeDef status;
     
-    TX_signal_frame_raw[TX_signal_frame_point] = 0xFF;  // END flag
-    TX_signal_frame_raw[TX_signal_frame_point + 1] = 0x00;  // Size 0
-    TX_signal_frame_point = TX_signal_frame_point + 2;
+    /* Append END flag (0xFF) and size 0x00 */
+    TX_signal_frame_raw[TX_signal_frame_point] = 0xFF;
+    TX_signal_frame_raw[TX_signal_frame_point + 1] = 0x00;
+    TX_signal_frame_point += 2;
     size_wo_FEC = TX_signal_frame_point;
     
+    /* Minimum frame size for proper FEC encoding */
     if (size_wo_FEC < 69) {
         size_wo_FEC = 69;
     }
     
-    // Check TX FIFO has space (stub - TODO: implement proper check)
-    // if (TX_FIFO_full_global(0) == 0) {
+    /* Build frame header */
     timer_snapshot = GetMicrosecondTimer();
-    rframe_TX[0] = (timer_snapshot >> 16) & 0xFF;  // Timer
+    rframe_TX[0] = (timer_snapshot >> 16) & 0xFF;  /* Timer high byte */
     
-    // TODO: Implement actual FEC encoding
-    size_w_FEC = size_wo_FEC;  // Stub: no FEC for now
+    /* FEC encode the data */
+    size_w_FEC = FEC_Encode(TX_signal_frame_raw, TX_signal_frame_FEC, size_wo_FEC);
     
-    rframe_length = size_w_FEC + 1;  // TODO: adjust for SI4463_offset_size
+    /* Calculate packet length field for SI4463 (subtract offset) */
+    rframe_length = (size_w_FEC + 1) - SI4463_OFFSET_SIZE;
     rframe_TX[1] = rframe_length;
-    rframe_TX[2] = 0x00;  // TDMA byte
     
-    // Copy data (stub - should be FEC encoded)
-    memcpy(rframe_TX + 3, TX_signal_frame_raw, size_wo_FEC);
+    /* TDMA byte (0x00 for signaling frames) */
+    rframe_TX[2] = 0x00;
     
-    // TODO: Write to TX FIFO
-    // TX_FIFO_write_global(rframe_TX, size_w_FEC + 3);
+    /* Copy FEC-encoded data to TX frame */
+    memcpy(rframe_TX + 3, TX_signal_frame_FEC, size_w_FEC);
     
-    taskENTER_CRITICAL();
-    stats.frames_sent++;
-    taskEXIT_CRITICAL();
-    // }
+    /* Write to SI4463 TX FIFO */
+    if (hsi4463 != NULL) {
+        uint16_t total_size = size_w_FEC + 3;
+        
+        /* SI4463_WriteTxFifo accepts max 129 bytes at a time */
+        if (total_size <= 129) {
+            status = SI4463_WriteTxFifo(hsi4463, rframe_TX, total_size);
+            if (status != HAL_OK) {
+                printf("Signaling TX FIFO write error\r\n");
+            }
+        } else {
+            /* Split into multiple writes if needed */
+            uint16_t offset = 0;
+            while (offset < total_size) {
+                uint8_t chunk_size = (total_size - offset) > 129 ? 129 : (total_size - offset);
+                status = SI4463_WriteTxFifo(hsi4463, rframe_TX + offset, chunk_size);
+                if (status != HAL_OK) {
+                    printf("Signaling TX FIFO write error (chunk)\r\n");
+                    break;
+                }
+                offset += chunk_size;
+            }
+        }
+        
+        /* Increment sent frame counter */
+        taskENTER_CRITICAL();
+        stats.frames_sent++;
+        taskEXIT_CRITICAL();
+    }
     
+    /* Reset frame pointer for next frame */
     TX_signal_frame_point = 0;
 }
 

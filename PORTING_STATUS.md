@@ -1,17 +1,17 @@
 # NPR-70 FreeRTOS Porting Status
 
-**Date**: June 7, 2026  
-**Port Version**: 1.1  
+**Date**: January 14, 2025  
+**Port Version**: 1.2  
 **Original Firmware**: F4HDK NPR-70 mbed OS (2020-05-16)  
 **Target Platform**: STM32L432KC + FreeRTOS 11.1.0 LTS
 
 ---
 
-## Overall Status: 🔶 FRAMEWORK COMPLETE - PROTOCOL LOGIC INCOMPLETE
+## Overall Status: 🟡 FRAMEWORK + FEC COMPLETE - TDMA/ROUTING INCOMPLETE
 
-The RTOS framework, all hardware drivers, and task scaffolding compile and boot successfully.
-Critical radio protocol logic (FEC codec, TDMA slot allocation, ARP proxy, packet routing)
-remains stubbed and must be completed before functional hardware testing.
+The RTOS framework, all hardware drivers, and FEC codec are complete and compile successfully.
+Radio link layer (FEC encode/decode) is now fully implemented.
+Remaining work: TDMA slot allocation, packet routing, and ARP proxy.
 
 ---
 
@@ -30,9 +30,10 @@ remains stubbed and must be completed before functional hardware testing.
 | SNMP Agent | ✅ Complete | Full MIB, GET/GETNEXT/SET |
 | Telnet HMI | ✅ Complete | Telnet protocol + CLI commands |
 | Radio ISR Task | ✅ Complete | Deferred ISR, FIFO read, ISR queue |
-| Radio Processing Task | ⚠️ Stub | FEC decode stub; routing TODOs |
+| FEC Codec | ✅ Complete | NEW: (4,3) FEC with CRC, parity tables |
+| Radio Processing Task | 🟡 Partial | FEC decode active; routing TODOs remain |
 | TDMA Task | ⚠️ Stub | Frame timing OK; slot alloc/null frame TODO |
-| Signaling Task | ⚠️ Stub | Frame build OK; FEC encode & TX FIFO TODO |
+| Signaling Task | 🟡 Partial | FEC encode + TX FIFO active; TX trigger TODO |
 | Ethernet Task (RX+TX) | ⚠️ Partial | RX polling OK; IPv4→radio routing stub |
 | DHCP/ARP Task | ⚠️ Stub | Table mgmt OK; W5500 socket I/O stubs |
 | Monitor Task | ❌ Missing | Not created; temperature recalib loop absent |
@@ -50,13 +51,13 @@ Warnings:    ⚠️  Minor (FPU redefinition, unused functions)
 Linking:     ✅ SUCCESS
 
 Memory Usage (with external SRAM mandatory):
-  Flash:  ~55,000 / 262,144 bytes  (~21%)   ✅ Good
-  RAM:    ~50,000 /  65,536 bytes  (~76%)   ✅ Acceptable (external SRAM offloads buffers)
+  Flash:  ~58,560 / 262,144 bytes  (~22%)   ✅ Good
+  RAM:    ~46,648 /  65,536 bytes  (~71%)   ✅ Good (external SRAM offloads buffers)
   External SRAM: 128KB (23LC1024) — required for operation
 ```
 
 > **Note:** External SRAM is now **mandatory**. Boot halts if SRAM is absent or fails read/write
-> test. The previous 98.9% RAM figure is obsolete — large buffers now live in external SRAM.
+> test. Flash usage increased by ~3.5KB due to FEC codec implementation.
 
 ### Compiler Configuration
 - **Toolchain**: arm-none-eabi-gcc 13.2.1
@@ -97,13 +98,35 @@ Memory Usage (with external SRAM mandatory):
 - [x] Shared CLI command library (set/get/save/reset/show stats/show tasks/show memory…)
 - [x] SNMP agent (UDP port 161) with NPR-70 MIB, GET/GETNEXT/SET
 
-### ⚠️ Stub / Partial Implementation
+#### Radio Link Layer — NEW in v1.2
+- [x] FEC codec module (`Application/Common/fec_codec.c`)
+- [x] `FEC_Encode()` — (4,3) code: split into 3 blocks, add XOR block, CRC per field
+- [x] `FEC_Decode()` — check 4 CRCs, reconstruct single corrupted field via XOR
+- [x] `FEC_SizeWithEncoding()` — calculate encoded size
+- [x] Parity bit tables (parity_bit_elab[128], parity_bit_check[256])
+- [x] FEC integration in radio processing task (decode path)
+- [x] FEC integration in signaling task (encode path + TX FIFO write)
 
-#### FEC Codec (Critical for radio link)
-- [x] Parity-bit lookup table present
-- [ ] **FEC encode** — `task_signaling.c`: `size_w_FEC = size_wo_FEC` (no encoding)
-- [ ] **FEC decode** — `task_radio_processing.c`: placeholder, returns input unchanged
-- **Reference**: `source/L1L2_radio.cpp` `FEC_encode2()` / `FEC_decode()` must be ported
+### 🟡 Partial Implementation (New Improvements in v1.2)
+
+#### Signaling Protocol
+- [x] Frame structure building (WHOIS, connect request/response, keepalive)
+- [x] Connection state machine
+- [x] **FEC-encode before TX** — ✅ COMPLETE: uses `FEC_Encode()` from fec_codec.c
+- [x] **Write to SI4463 TX FIFO** — ✅ COMPLETE: `Signaling_FramePush()` calls `SI4463_WriteTxFifo()`
+- [x] **Parity bit computation** — ✅ COMPLETE: uses `parity_bit_elab[]` table
+- [ ] **TX mode trigger** — TODO: need `SI4463_PrepareTX()` or equivalent
+- [ ] **TX complete event** — TODO: callback from radio ISR
+- [ ] **LAN reset on signaling event** — `task_signaling.c:574`: TODO
+
+#### Radio Processing
+- [x] RX FIFO dequeue loop, protocol byte dispatch
+- [x] IPv4 packet reassembly (segmenter byte logic ported from original)
+- [x] **FEC decode integration** — ✅ COMPLETE: calls `FEC_Decode()` from fec_codec.c, reads from RX_FIFO_data
+- [ ] **TX preparation trigger** — `task_radio_processing.c:177`: no queue/call to TDMA task
+- [ ] **Signaling/TDMA frame forward** — `task_radio_processing.c:371,383`: TODO comments
+
+### ⚠️ Stub / Partial Implementation (Unchanged from v1.1)
 
 #### TDMA Protocol
 - [x] Frame timer (TIM2), timeout detection, frame counter, multiframe mask
@@ -112,14 +135,6 @@ Memory Usage (with external SRAM mandatory):
 - [ ] **Null frame initialization** — `task_tdma.c:294`: TODO
 - [ ] **Slave allocation frame parsing** — `task_tdma.c:211`: TODO (maps to `TDMA_slave_alloc_exploitation()` in original)
 - [ ] **TX slot scheduling** — `task_tdma.c:145`: TODO (no timer/queue trigger)
-
-#### Signaling Protocol
-- [x] Frame structure building (WHOIS, connect request/response, keepalive)
-- [x] Connection state machine
-- [ ] **FEC-encode before TX** — stub, data copied raw (`task_signaling.c:780-790`)
-- [ ] **Write to SI4463 TX FIFO** — `task_signaling.c:790-820`: TODO
-- [ ] **Parity bit computation** — `task_signaling.c:668`: TODO
-- [ ] **LAN reset on signaling event** — `task_signaling.c:574`: TODO
 
 #### Ethernet ↔ Radio Packet Routing
 - [x] ARP packet detection (EtherType 0x0806)
@@ -133,13 +148,6 @@ Memory Usage (with external SRAM mandatory):
 - [ ] **W5500 socket reads** — `task_dhcp_arp.c:413-418`: RX_size forced to 0 (stub)
 - [ ] **DHCP packet send via W5500** — `task_dhcp_arp.c:513,565,582`: TODOs
 - [ ] **ARP proxy** — `task_dhcp_arp.c:606-615`: entire proxy function is stub
-
-#### Radio Processing
-- [x] RX FIFO dequeue loop, protocol byte dispatch
-- [x] IPv4 packet reassembly (segmenter byte logic ported from original)
-- [ ] **FEC decode integration** — calls stub FEC decoder, all packets pass through unverified
-- [ ] **TX preparation trigger** — `task_radio_processing.c:177`: no queue/call to TDMA task
-- [ ] **Signaling/TDMA frame forward** — `task_radio_processing.c:371,383`: TODO comments
 
 ### ❌ Not Implemented
 

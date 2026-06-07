@@ -177,6 +177,24 @@ extern volatile uint16_t RX_size_remaining;
 extern volatile uint32_t TDMA_slave_last_master_top;
 extern volatile int32_t TDMA_table_TA[RADIO_ADDR_TABLE_SIZE];
 
+/* TDMA allocation and timing (master mode) */
+extern volatile uint32_t time_max_TX_burst;         /* Maximum TX burst time in microseconds */
+extern volatile uint32_t offset_time_TX_slave;      /* Client TX timing offset */
+extern volatile uint32_t TDMA_offset_multi_frame;   /* Multi-frame timing offset */
+extern volatile uint8_t master_allocated_slots;     /* Number of slots allocated to master */
+
+/* TDMA configuration parameters (timing in microseconds) */
+extern uint32_t CONF_TDMA_frame_duration;
+extern uint32_t CONF_TDMA_slot_duration;
+extern uint32_t CONF_reduced_TDMA_slot_duration;
+extern uint32_t CONF_TDMA_slot_margin;
+extern uint32_t CONF_TR_margain;
+extern uint32_t CONF_TA_margain;
+extern uint32_t CONF_delay_prepTX1_2_TX;
+
+/* TDMA TX buffers */
+extern uint8_t TX_TDMA_intern_data[400];             /* TDMA allocation frame buffer */
+
 /* Statistics */
 extern volatile uint32_t RSSI_total_stat;
 extern volatile uint32_t RSSI_stat_pkt_nb;

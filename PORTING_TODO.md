@@ -1,60 +1,21 @@
 # NPR-70 FreeRTOS Port — Remaining TODO List
 
-**Date**: June 7, 2026  
-**Status**: Framework complete, protocol logic incomplete  
+**Date**: June 07, 2026  
+**Status**: Framework complete, FEC codec implemented, protocol logic partial  
 **Blocking full hardware test**: items marked 🔴 (critical)
 
 Reference originals are in `source/` (mbed C++ code).  
 All new C implementations go in `Application/Tasks/` or `Application/Services/`.
 
----
 
-## Priority 1 — Radio Link (nothing works without these)
-
-### 🔴 TODO-1: Port FEC encode/decode
-
-**Files to edit**: `Application/Tasks/task_radio_processing.c`, `Application/Tasks/task_signaling.c`  
-**Reference**: `source/L1L2_radio.cpp` — `FEC_encode2()` (line 259), `FEC_decode()` (line 304), `size_w_FEC_compute()` (line 389)
-
-The FEC codec uses a (3,1) repetition code: every input byte is written three times.
-Decoding uses majority vote per bit.
-
-- [ ] Port `FEC_encode2(data_in, data_out, size_in)` → plain C, no mbed deps
-- [ ] Port `FEC_decode(data_out, size_in, micro_BER*)` → returns decoded length or ≤0 on error
-- [ ] Port `size_w_FEC_compute(size_wo_FEC)` helper
-- [ ] Replace stub in `task_signaling.c:780-781`: `size_w_FEC = size_wo_FEC` → call `FEC_encode2()`
-- [ ] Replace stub in `task_radio_processing.c:302-315`: placeholder FEC decode → call `FEC_decode()`
-- [ ] Add `micro_BER` accumulation and expose via SNMP/CLI stats
-
----
-
-### 🔴 TODO-2: Port parity bit computation for TDMA/signaling bytes
-
-**Files to edit**: `Application/Tasks/task_signaling.c`, `Application/Tasks/task_tdma.c`  
-**Reference**: `source/TDMA.cpp` — `parity_bit_elab[]` lookup table (used in `TDMA_byte_elaboration()`); `source/L1L2_radio.cpp` — `parity_bit_check[]` table  
-
-- [ ] Add `parity_bit_elab[128]` lookup table (even parity over 7-bit input → 8th bit)
-- [ ] Fix `task_signaling.c:668` TODO — replace with lookup table call
-- [ ] Verify TDMA byte parity in `task_tdma.c` `TDMA_ByteElaboration()` uses the same table
-
----
-
-### 🔴 TODO-3: Wire SI4463 TX FIFO write in signaling task
-
-**File to edit**: `Application/Tasks/task_signaling.c`  
-**Reference**: `source/L1L2_radio.cpp` — `TxFIFO_write()`, `source/signaling.cpp` — `radio_send_signalisation_frame()`
-
-After FEC encoding (TODO-1), the signaling frame must be written to the SI4463 TX FIFO
-and TX mode triggered. Currently lines 787–820 are all TODO stubs.
-
-- [ ] Call `SI4463_WriteTxFIFO(hsi4463, rframe_TX, rframe_length)` at `task_signaling.c:787`
+### 🔴 TODO-4a: SI4463 driver things
 - [ ] Implement `SI4463_PrepareTX()` trigger (check `si4463_driver.c` for existing `SI4463_prepa_TX_1()`)
 - [ ] Handle FIFO space check before write (`task_signaling.c:775`)
 - [ ] Add TX complete event / callback from radio ISR to signaling task (via queue or event group bit)
 
 ---
 
-### 🔴 TODO-4: Implement TDMA master slot allocation algorithm
+### 🔴 TODO-4b: Implement TDMA master slot allocation algorithm
 
 **File to edit**: `Application/Tasks/task_tdma.c`  
 **Reference**: `source/TDMA.cpp` — `TDMA_master_allocation()` (search for "master_allocated_slots"), `TDMA_byte_elaboration()`
@@ -233,14 +194,6 @@ recognized but not forwarded to the respective tasks.
 
 ## Priority 6 — Advanced Features (post-MVP)
 
-### 🔵 TODO-17: Power management between TDMA slots
-
-- [ ] Use WFI/WFE or `__WFI()` in idle task hook between TDMA slot boundaries
-- [ ] Configure STM32 low-power STOP mode (requires careful clock restart)
-- [ ] Measure power consumption improvement
-
----
-
 ### 🔵 TODO-18: Extended diagnostics / log ring buffer
 
 - [ ] Implement circular log buffer in external SRAM (e.g., 8 KB)
@@ -283,9 +236,6 @@ TODO-10 + TODO-11 + TODO-12 (DHCP/ARP socket I/O)
 
 ## Suggested Work Order
 
-1. **TODO-1** (FEC codec) — all radio traffic blocked without this  
-2. **TODO-2** (parity bits) — required for correct TDMA byte framing  
-3. **TODO-3** (signaling TX FIFO) — enables signaling frames to be sent  
 4. **TODO-4 + 5 + 6** (TDMA alloc + null frame) — enables multi-client TDMA  
 5. **TODO-10 + 11 + 12** (DHCP socket I/O) — enables IP address assignment  
 6. **TODO-7 + 8** (IPv4 routing + ARP) — enables end-to-end data traffic  

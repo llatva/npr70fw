@@ -382,7 +382,7 @@ int main(void)
   TDMATask_Init(&hsi4463);
   
   printf("  - SignalingTask_Init...\r\n");
-  SignalingTask_Init();
+  SignalingTask_Init(&hsi4463);
   
   printf("  - EthernetTask_Init...\r\n");
   EthernetTask_Init(&hw5500);

@@ -15,6 +15,7 @@
 
 #include "task_tdma.h"
 #include "app_common.h"
+#include "fec_codec.h"
 #include "si4463_driver.h"
 #include "watchdog.h"
 #include <stdio.h>
