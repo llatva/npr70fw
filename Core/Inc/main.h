@@ -57,7 +57,7 @@ extern "C" {
 #define EVENT_TDMA_CONNECTED        (1 << 6)
 
 /* Firmware version */
-#define FW_VERSION "NPR-FreeRTOS-fw-1.7.0"
+#define FW_VERSION "NPR-FreeRTOS-fw-1.8.0"
 
 /* Hardware Pin Definitions for STM32L432KC */
 /* SPI1 - SI4463 Radio */
