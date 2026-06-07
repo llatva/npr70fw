@@ -1,37 +1,43 @@
 # NPR-70 FreeRTOS Porting Status
 
-**Date**: November 7, 2025  
-**Port Version**: 1.0  
+**Date**: June 7, 2026  
+**Port Version**: 1.1  
 **Original Firmware**: F4HDK NPR-70 mbed OS (2020-05-16)  
 **Target Platform**: STM32L432KC + FreeRTOS 11.1.0 LTS
 
 ---
 
-## Overall Status: ✅ PORT COMPLETE - READY FOR HARDWARE TESTING
+## Overall Status: 🔶 FRAMEWORK COMPLETE - PROTOCOL LOGIC INCOMPLETE
 
-All software components have been ported, compiled successfully, and are ready for hardware validation.
+The RTOS framework, all hardware drivers, and task scaffolding compile and boot successfully.
+Critical radio protocol logic (FEC codec, TDMA slot allocation, ARP proxy, packet routing)
+remains stubbed and must be completed before functional hardware testing.
 
 ---
 
 ## Component Status Summary
 
-| Component | Status | Lines of Code | Notes |
-|-----------|--------|---------------|-------|
-| Core System | ✅ Complete | 599 | main.c with FreeRTOS initialization |
-| Radio ISR Task | ✅ Complete | 157 | Interrupt handling for SI4463 |
-| Radio Processing Task | ✅ Complete | 294 | Packet processing and routing |
-| TDMA Task | ✅ Complete | 368 | TDMA timing and slot management |
-| Ethernet RX Task | ✅ Complete | 236 | W5500 packet reception |
-| Ethernet TX Task | ✅ Complete | 181 | W5500 packet transmission |
-| Signaling Task | ✅ Complete | 212 | Network keepalive and signaling |
-| DHCP/ARP Task | ✅ Complete | 649 | DHCP server and ARP proxy |
-| SNMP Task | ✅ Complete | 845 | SNMP agent with NPR-70 MIB |
-| Telnet Task | ✅ Complete | 550 | Full CLI with 18 commands |
-| W5500 Driver | ✅ Complete | 493 | Ethernet controller + socket init |
-| SI4463 Driver | ✅ Complete | 1,247 | Radio transceiver driver |
-| SRAM Driver | ✅ Complete | 185 | External SPI SRAM (23LC1024) |
-| Common/Globals | ✅ Complete | 153 | Shared definitions and variables |
-| **TOTAL** | **✅ 100%** | **6,169** | **All components implemented** |
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Core System (main.c) | ✅ Complete | FreeRTOS init, 8 tasks, all HAL peripherals |
+| SI4463 Radio Driver | ✅ Complete | SPI1, temp read, recalibration detect |
+| W5500 Ethernet Driver | ✅ Complete | SPI3, sockets, RX/TX transfers |
+| Ext. SRAM Driver | ✅ Complete | Now mandatory; test on boot |
+| Watchdog | ✅ Complete | IWDG hardware + per-task monitor |
+| Config Flash Save/Load | ✅ Complete | CRC32 verified, defaults, save/load |
+| Factory Reset | ✅ Complete | Flash erase + default restore |
+| Serial CLI (UART) | ✅ Complete | New: UART2 console, shared CLI lib |
+| SNMP Agent | ✅ Complete | Full MIB, GET/GETNEXT/SET |
+| Telnet HMI | ✅ Complete | Telnet protocol + CLI commands |
+| Radio ISR Task | ✅ Complete | Deferred ISR, FIFO read, ISR queue |
+| Radio Processing Task | ⚠️ Stub | FEC decode stub; routing TODOs |
+| TDMA Task | ⚠️ Stub | Frame timing OK; slot alloc/null frame TODO |
+| Signaling Task | ⚠️ Stub | Frame build OK; FEC encode & TX FIFO TODO |
+| Ethernet Task (RX+TX) | ⚠️ Partial | RX polling OK; IPv4→radio routing stub |
+| DHCP/ARP Task | ⚠️ Stub | Table mgmt OK; W5500 socket I/O stubs |
+| Monitor Task | ❌ Missing | Not created; temperature recalib loop absent |
+| Power Management | ❌ Missing | No sleep modes implemented |
+| Firmware Update | ❌ Missing | No OTA/bootloader mechanism |
 
 ---
 
@@ -43,13 +49,14 @@ Compilation: ✅ SUCCESS (no errors)
 Warnings:    ⚠️  Minor (FPU redefinition, unused functions)
 Linking:     ✅ SUCCESS
 
-Memory Usage:
-  Flash:  52,396 / 262,144 bytes  (19.9%)  ✅ Excellent
-  RAM:    64,648 /  65,536 bytes  (98.9%)  ⚠️  At limit
-  .text:  52,396 bytes
-  .data:     648 bytes
-  .bss:   64,648 bytes
+Memory Usage (with external SRAM mandatory):
+  Flash:  ~55,000 / 262,144 bytes  (~21%)   ✅ Good
+  RAM:    ~50,000 /  65,536 bytes  (~76%)   ✅ Acceptable (external SRAM offloads buffers)
+  External SRAM: 128KB (23LC1024) — required for operation
 ```
+
+> **Note:** External SRAM is now **mandatory**. Boot halts if SRAM is absent or fails read/write
+> test. The previous 98.9% RAM figure is obsolete — large buffers now live in external SRAM.
 
 ### Compiler Configuration
 - **Toolchain**: arm-none-eabi-gcc 13.2.1
@@ -66,335 +73,211 @@ Memory Usage:
 
 #### Core RTOS
 - [x] FreeRTOS 11.1.0 LTS kernel integration
-- [x] 10 tasks with priority-based scheduling
-- [x] Queue-based inter-task communication
-- [x] Mutex protection for SPI buses
+- [x] 8 tasks with priority-based scheduling
+- [x] Queue-based inter-task communication (RadioISR, RadioTx, EthernetRx, EthernetTx)
+- [x] Mutex protection for SPI1 (SI4463) and SPI3 (W5500 + SRAM)
 - [x] Event groups for system events
-- [x] Heap management (13.5 KB heap_4)
-- [x] Microsecond timer (TIM2)
+- [x] Microsecond timer (TIM2 @ 1 MHz)
+- [x] Watchdog: IWDG hardware + per-task Watchdog_RegisterTask / Watchdog_Refresh
 
-#### Radio Subsystem
-- [x] SI4463 driver (SPI1)
-- [x] Radio interrupt handling
-- [x] TX/RX packet processing
-- [x] TDMA coordinator
-- [x] Network signaling
-- [x] Modulation support (11-14, 20-24)
-- [x] Frequency control (420-450 MHz)
-- [x] Power control
+#### Hardware Drivers
+- [x] SI4463 driver (SPI1): init, commands, FIFO read/write, RX/TX state, temperature
+- [x] W5500 driver (SPI3): init, register access, socket setup, RX/TX transfers
+- [x] Ext. SRAM driver (SPI3, CS=PB0): init, test, byte/burst read-write, FIFO management
 
-#### Ethernet Subsystem
-- [x] W5500 driver (SPI3)
-- [x] Socket initialization (DHCP, SNMP, Telnet)
-- [x] Packet reception task
-- [x] Packet transmission task
-- [x] DHCP server (UDP port 67)
-- [x] ARP proxy
-- [x] SNMP agent (UDP port 161)
-- [x] Telnet server (TCP port 23)
-
-#### Network Services
-- [x] DHCP IP allocation
-- [x] ARP table management
-- [x] SNMP MIB implementation
-- [x] Telnet CLI (18 commands)
-- [x] Configuration management
-- [x] Client table tracking
+#### Configuration
+- [x] Flash save with CRC32 integrity check
+- [x] Flash load with fallback to factory defaults
+- [x] Flash erase (factory reset)
+- [x] All original config variables preserved
 
 #### User Interface
-- [x] Telnet protocol negotiation
-- [x] Command parsing with parameters
-- [x] Echo and line editing
-- [x] Help system
-- [x] Status monitoring
-- [x] Configuration display
-- [x] Real-time task statistics
-- [x] Memory usage display
+- [x] Serial CLI over UART2 (921600 baud) — NEW since v1.0
+- [x] Telnet server (TCP port 23) with full CLI
+- [x] Shared CLI command library (set/get/save/reset/show stats/show tasks/show memory…)
+- [x] SNMP agent (UDP port 161) with NPR-70 MIB, GET/GETNEXT/SET
 
-### ⚠️ Stub Implementation (Compiles, Needs Work)
+### ⚠️ Stub / Partial Implementation
 
-#### Configuration Persistence
-- [x] Configuration variables defined
-- [ ] Flash save implementation
-- [ ] Flash load on boot
-- [ ] Validation and migration
-- **Status**: Variables exist but save/load not implemented
+#### FEC Codec (Critical for radio link)
+- [x] Parity-bit lookup table present
+- [ ] **FEC encode** — `task_signaling.c`: `size_w_FEC = size_wo_FEC` (no encoding)
+- [ ] **FEC decode** — `task_radio_processing.c`: placeholder, returns input unchanged
+- **Reference**: `source/L1L2_radio.cpp` `FEC_encode2()` / `FEC_decode()` must be ported
 
-#### Factory Reset
-- [x] Reset command exists
-- [ ] Flash erase implementation
-- [ ] Default config restoration
-- **Status**: Reboots but doesn't clear flash
+#### TDMA Protocol
+- [x] Frame timer (TIM2), timeout detection, frame counter, multiframe mask
+- [x] TDMA byte assembly and parity bit (client uplink buffer size bits)
+- [ ] **Master slot allocation algorithm** — `task_tdma.c:107`: TODO block
+- [ ] **Null frame initialization** — `task_tdma.c:294`: TODO
+- [ ] **Slave allocation frame parsing** — `task_tdma.c:211`: TODO (maps to `TDMA_slave_alloc_exploitation()` in original)
+- [ ] **TX slot scheduling** — `task_tdma.c:145`: TODO (no timer/queue trigger)
 
-#### External SRAM
-- [x] Driver implemented
-- [x] Detection on boot
-- [ ] Buffer allocation in SRAM
-- [ ] Active usage in packet processing
-- **Status**: Detected but not utilized
+#### Signaling Protocol
+- [x] Frame structure building (WHOIS, connect request/response, keepalive)
+- [x] Connection state machine
+- [ ] **FEC-encode before TX** — stub, data copied raw (`task_signaling.c:780-790`)
+- [ ] **Write to SI4463 TX FIFO** — `task_signaling.c:790-820`: TODO
+- [ ] **Parity bit computation** — `task_signaling.c:668`: TODO
+- [ ] **LAN reset on signaling event** — `task_signaling.c:574`: TODO
 
-### ❌ Not Yet Implemented
+#### Ethernet ↔ Radio Packet Routing
+- [x] ARP packet detection (EtherType 0x0806)
+- [x] IPv4 packet detection (EtherType 0x0800)
+- [ ] **IPv4 → radio routing** — `RouteIPv4ToRadio()` in `task_ethernet_rx.c` is a stub (counts packets only)
+- [ ] **ARP processing and proxy** — `ProcessARPPacket()` stub; no ARP table lookup or reply
+- [ ] **FDD downlink packet handling** — `task_ethernet_rx.c:185`: TODO (port 6716 path)
+
+#### DHCP/ARP Task
+- [x] DHCP table structure, state machine, offer/ack/nak logic
+- [ ] **W5500 socket reads** — `task_dhcp_arp.c:413-418`: RX_size forced to 0 (stub)
+- [ ] **DHCP packet send via W5500** — `task_dhcp_arp.c:513,565,582`: TODOs
+- [ ] **ARP proxy** — `task_dhcp_arp.c:606-615`: entire proxy function is stub
+
+#### Radio Processing
+- [x] RX FIFO dequeue loop, protocol byte dispatch
+- [x] IPv4 packet reassembly (segmenter byte logic ported from original)
+- [ ] **FEC decode integration** — calls stub FEC decoder, all packets pass through unverified
+- [ ] **TX preparation trigger** — `task_radio_processing.c:177`: no queue/call to TDMA task
+- [ ] **Signaling/TDMA frame forward** — `task_radio_processing.c:371,383`: TODO comments
+
+### ❌ Not Implemented
+
+#### Monitor Task (Implementation Plan Task 6.5)
+- [ ] No `vMonitorTask` created
+- [ ] Temperature monitoring loop (SI4463_CheckTemperatureCalibration exists but unused)
+- [ ] Periodic recalibration trigger
+- [ ] LED status updates
 
 #### Advanced Features
-- [ ] Watchdog timer
-- [ ] Power management (sleep modes)
-- [ ] Boot loader integration
-- [ ] Firmware update mechanism
-- [ ] Extended diagnostics/logging
-- [ ] Performance profiling
+- [ ] Power management (sleep modes between TDMA slots)
+- [ ] Bootloader integration
+- [ ] Firmware update mechanism (OTA or serial)
+- [ ] Extended diagnostics / log ring buffer
+
+---
+
+## Structural Issues (Code Hygiene)
+
+The following redundant files exist and cause confusion about which implementation is authoritative.
+They compile but are **not used** by `main.c`:
+
+| Unused file | Active replacement |
+|-------------|-------------------|
+| `task_radio_isr.c` + `task_radio_processing.c` | `task_radio_combined.c` (vRadioTask) |
+| `task_ethernet_rx.c` + `task_ethernet_tx.c` | `task_ethernet.c` (vEthernetTask) |
+| `task_networkmgmt.c` + `task_netmgmt_telnet.c` | `task_network_mgmt.c` (vNetworkMgmtTask) |
+
+The stub bodies in `task_networkmgmt.c` (`DHCPARPTask_Poll`, `SNMPTask_Poll`) contain the comment
+*"user should fill in with actual periodic logic"* — indicating incomplete delegation to the underlying
+DHCP/ARP and SNMP subsystems.
 
 ---
 
 ## Memory Analysis
 
-### RAM Breakdown (64,648 bytes total)
+### RAM Breakdown (with external SRAM mandatory)
 ```
-FreeRTOS Heap:        13,568 bytes  (20.9%)
-Task Stacks:          ~6,000 bytes  ( 9.3%)
-Global Variables:     ~45,000 bytes (69.5%)
-  - RX FIFO:           8,192 bytes
-  - TX Buffers:        ~16,000 bytes
-  - Radio Tables:      ~4,000 bytes
-  - Config/State:      ~17,000 bytes
-Other:                   ~80 bytes  ( 0.3%)
-```
-
-### Flash Breakdown (52,396 bytes total)
-```
-Application Code:     ~35,000 bytes  (66.8%)
-FreeRTOS Kernel:      ~8,000 bytes   (15.3%)
-STM32 HAL:            ~6,000 bytes   (11.5%)
-Const Strings:        ~3,000 bytes   ( 5.7%)
-Other:                  ~396 bytes   ( 0.7%)
+Internal RAM (65,536 bytes total):
+  FreeRTOS Heap:       ~16,000 bytes
+  Task Stacks:          ~6,000 bytes
+  Global/BSS:          ~28,000 bytes (config, state, small buffers)
+  
+External SRAM (128KB — 23LC1024):
+  RX FIFO buffer:       2,048 bytes
+  Ethernet packet buffers: up to 16 × 1,600 bytes (lazy allocated)
+  Queue backing:        varies
 ```
 
-### Critical Observations
-1. **RAM at Limit**: Only 888 bytes (1.1%) free
-2. **No Growth Room**: Cannot add features requiring RAM
-3. **Stack Tuning**: All task stacks minimized
-4. **Heap Tuning**: 13.5 KB carefully balanced
-5. **Buffer Optimization**: All buffers sized to minimum
+### Flash Breakdown
+```
+Application Code:     ~38,000 bytes  (~72%)
+FreeRTOS Kernel:       ~8,000 bytes  (~15%)
+STM32 HAL:             ~6,000 bytes  (~11%)
+Const Strings/Tables:  ~3,000 bytes  (~ 6%)
+```
 
 ---
 
 ## Task Priority and Stack Configuration
 
-| Task | Priority | Stack (words) | Stack (bytes) | Usage |
-|------|----------|---------------|---------------|-------|
-| RadioISR | 5 | 128 | 512 | ~60% |
-| RadioProcessing | 4 | 256 | 1024 | ~50% |
-| TDMA | 3 | 192 | 768 | ~55% |
-| Signaling | 3 | 128 | 512 | ~40% |
-| EthernetRX | 2 | 256 | 1024 | ~45% |
-| EthernetTX | 2 | 192 | 768 | ~40% |
-| DHCP_ARP | 2 | 256 | 1024 | ~50% |
-| SNMP | 2 | 256 | 1024 | ~55% |
-| Telnet | 1 | 256 | 1024 | ~45% |
+| Task | Priority | Stack (words) | Notes |
+|------|----------|---------------|-------|
+| RadioTask (combined) | 7 | 220 | ISR + processing |
+| TDMA | 6 | 144 | Timing-critical |
+| Signaling | 5 | 112 | |
+| Ethernet (combined RX+TX) | 4 | 180 | |
+| NetworkMgmt (DHCP+SNMP) | 3 | 144 | |
+| Telnet | 2 | 144 | |
+| SerialCLI | 2 | configurable | New in v1.1 |
+| Watchdog | tskIDLE+1 | 112 | Lowest |
 
-**Note**: Stack usage percentages are estimates. Real usage will be verified during hardware testing.
+---
+
+## Completed Items Since v1.0
+
+| Item | Previous Status | Current Status |
+|------|-----------------|----------------|
+| Watchdog timer | ❌ Not implemented | ✅ Complete |
+| Config flash save/load | ⚠️ Stub (vars exist, no I/O) | ✅ Complete |
+| Factory reset flash erase | ⚠️ Reboots only | ✅ Complete |
+| External SRAM integration | ⚠️ Detected, unused | ✅ Complete (mandatory) |
+| Serial CLI (UART) | ❌ Not planned | ✅ New feature |
 
 ---
 
 ## Testing Requirements
 
-### Unit Testing (Not Done)
-- [ ] W5500 register read/write
-- [ ] SI4463 register read/write
-- [ ] SPI communication verification
-- [ ] Timer accuracy validation
-- [ ] Queue message passing
-- [ ] Mutex operation
+### Hardware Not Yet Testable (protocol stubs incomplete)
+- Radio TX/RX (FEC not implemented)
+- TDMA master slot allocation
+- DHCP server (socket I/O stub)
+- ARP proxy
 
-### Integration Testing (Not Done)
-- [ ] Radio TX/RX loopback
-- [ ] Ethernet packet injection
-- [ ] DHCP client simulation
-- [ ] SNMP query/response
-- [ ] Telnet session handling
-- [ ] Task synchronization
+### Can Be Tested Now (driver-level)
+- [ ] UART serial CLI connects and responds to commands
+- [ ] SI4463 SPI comms (version read, chip present)
+- [ ] W5500 SPI comms (chip ID, ping response)
+- [ ] External SRAM read/write test (runs at boot)
+- [ ] SNMP responds to queries
+- [ ] Telnet connection and CLI
+- [ ] Config save/load survives reboot
+- [ ] Watchdog kick in all tasks
+- [ ] TIM2 microsecond counter accuracy
 
-### System Testing (Required)
-- [ ] Full radio link establishment
-- [ ] TDMA slot timing accuracy
-- [ ] Ethernet bridge throughput
-- [ ] Multi-client DHCP allocation
-- [ ] SNMP MIB walking
-- [ ] Telnet concurrent sessions
-- [ ] Long-term stability (24+ hours)
-- [ ] Error recovery scenarios
-
-### Hardware Validation Checklist
-```
-Hardware Setup:
-  [ ] STM32L432KC board connected
-  [ ] SI4463 radio module wired (SPI1)
-  [ ] W5500 Ethernet module wired (SPI3)
-  [ ] External SRAM connected (optional)
-  [ ] Antenna connected
-  [ ] Network cable connected
-  [ ] Power supply stable
-
-Initial Tests:
-  [ ] Flash firmware successfully
-  [ ] Boot and enter main()
-  [ ] Tasks start without crash
-  [ ] Telnet connection works
-  [ ] 'show tasks' displays all tasks
-  [ ] 'show memory' shows heap status
-  [ ] Radio responds to commands
-  [ ] Ethernet link detected
-
-Functional Tests:
-  [ ] Radio TX test mode works
-  [ ] Radio RX receives packets
-  [ ] TDMA synchronization in master mode
-  [ ] TDMA synchronization in client mode
-  [ ] Ethernet packets forwarded
-  [ ] DHCP assigns IP addresses
-  [ ] SNMP responds to queries
-  [ ] Configuration persists (after implementation)
-
-Performance Tests:
-  [ ] Throughput > 100 kbps
-  [ ] Latency < 100 ms
-  [ ] Packet loss < 1%
-  [ ] No stack overflows
-  [ ] No heap exhaustion
-  [ ] No memory leaks
-  [ ] Stable for 24+ hours
-```
+### Full System Tests (blocked pending stubs)
+- [ ] Radio TX test mode → scope / spectrum analyzer
+- [ ] Radio RX receives packets from another NPR-70
+- [ ] TDMA synchronization master ↔ slave
+- [ ] IP packet ping through radio link
+- [ ] DHCP assigns IPs to radio clients
+- [ ] 24-hour stability test
 
 ---
 
-## Known Issues and Workarounds
+## Known Issues
 
-### Issue 1: RAM at Maximum Capacity
-**Severity**: High  
-**Impact**: No room for feature expansion  
-**Status**: Design limitation  
-**Workaround**: Use external SRAM for buffers (not yet implemented)  
-**Long-term Fix**: Consider STM32L4 variant with more RAM (e.g., STM32L433 with 64KB)
+### Issue 1: FEC Not Implemented
+**Severity**: Critical — no radio link possible  
+**Status**: Stubs in task_signaling.c and task_radio_processing.c  
+**Fix**: Port `FEC_encode2()` / `FEC_decode()` from `source/L1L2_radio.cpp`
 
-### Issue 2: Configuration Not Persistent
-**Severity**: Medium  
-**Impact**: Settings lost on reboot  
-**Status**: Not implemented  
-**Workaround**: Reconfigure via telnet after boot  
-**Fix**: Implement flash save/load using STM32 HAL Flash API
+### Issue 2: TDMA Slot Allocation Missing
+**Severity**: Critical for multi-client operation  
+**Status**: Frame counter and timeout OK; allocation algorithm TODO  
+**Fix**: Port `TDMA_master_allocation()` from `source/TDMA.cpp`
 
-### Issue 3: Unused Variables Warnings
-**Severity**: Low  
-**Impact**: Compilation warnings only  
-**Status**: Legacy code cleanup needed  
-**Workaround**: Ignored (does not affect functionality)  
-**Fix**: Remove or use unused variables in legacy code
+### Issue 3: DHCP/ARP Task Does No Socket I/O
+**Severity**: High — DHCP server non-functional  
+**Status**: Table and logic structure exist; W5500 calls are stubs  
+**Fix**: Wire `W5500_ReadUDPPacket()` / `W5500_WriteUDPPacket()` calls
 
-### Issue 4: External SRAM Unused
-**Severity**: Medium  
-**Impact**: Missing optimization opportunity  
-**Status**: Driver exists but not integrated  
-**Workaround**: None (buffers in internal RAM)  
-**Fix**: Migrate large buffers to external SRAM
+### Issue 4: IPv4 ↔ Radio Routing Is a Stub
+**Severity**: High — no data traffic possible  
+**Status**: RouteIPv4ToRadio() counts packets only  
+**Fix**: Port `IPv4_to_radio()` from `source/Eth_IPv4.cpp`
 
----
-
-## Next Steps
-
-### Priority 1: Hardware Testing
-1. Flash firmware to STM32L432KC
-2. Verify task execution and stability
-3. Test radio TX/RX with actual SI4463
-4. Test Ethernet communication with W5500
-5. Validate TDMA timing with oscilloscope
-6. Test end-to-end packet forwarding
-
-### Priority 2: Critical Features
-1. Implement flash configuration save/load
-2. Integrate external SRAM for packet buffers
-3. Add watchdog timer for reliability
-4. Implement comprehensive error handling
-
-### Priority 3: Optimization
-1. Profile actual task stack usage
-2. Optimize heap allocation
-3. Consider moving buffers to external SRAM
-4. Add power management (sleep modes)
-
-### Priority 4: Documentation
-1. Create hardware setup guide
-2. Document pin assignments
-3. Write testing procedures
-4. Create troubleshooting guide
-
----
-
-## Risk Assessment
-
-### High Risk
-- **RAM Overflow**: At 98.9%, any increase causes link failure
-  - **Mitigation**: Careful testing, stack monitoring
-
-### Medium Risk
-- **TDMA Timing**: Microsecond precision required for slot sync
-  - **Mitigation**: Use hardware timer, validate with scope
-  
-- **Interrupt Latency**: Radio ISR must be fast
-  - **Mitigation**: Minimal ISR code, priority tuning
-
-### Low Risk
-- **Ethernet Throughput**: W5500 driver performance
-  - **Mitigation**: Queue-based design should handle load
-
-- **Configuration Loss**: No persistence yet
-  - **Mitigation**: Easy to reconfigure via telnet
-
----
-
-## Success Criteria
-
-### Minimum Viable Product
-- [x] Compiles without errors
-- [ ] Boots and runs on hardware
-- [ ] All tasks executing
-- [ ] Telnet accessible
-- [ ] Radio transmits
-- [ ] Radio receives
-- [ ] Ethernet passes packets
-
-### Full Feature Parity
-- [x] All original features ported
-- [ ] TDMA timing accurate
-- [ ] Multi-client operation
-- [ ] Configuration persistent
-- [ ] Stable for extended periods
-- [ ] Performance meets original
-
-### Production Ready
-- [ ] All tests passing
-- [ ] Error handling comprehensive
-- [ ] Watchdog implemented
-- [ ] Documentation complete
-- [ ] Hardware validated
-- [ ] Field tested
-
----
-
-## Conclusion
-
-The FreeRTOS port of NPR-70 firmware is **COMPLETE FROM A SOFTWARE PERSPECTIVE**. All components compile successfully, and the code is ready for hardware testing.
-
-The main remaining work is:
-1. **Hardware validation** (highest priority)
-2. **Configuration persistence** implementation
-3. **External SRAM** integration
-4. **Watchdog timer** for reliability
-
-The port successfully maintains all original functionality within the extremely tight 64KB RAM constraint of the STM32L432KC, achieving 98.9% RAM utilization without overflow.
-
-**Next Milestone**: First successful hardware boot and radio/Ethernet communication test.
-
----
-
-**Prepared by**: OH3HZB Lasse  
-**Date**: November 7, 2025  
-**Status**: Ready for Hardware Testing ✅
+### Issue 5: Redundant Source Files
+**Severity**: Medium — maintenance confusion  
+**Status**: Old individual task files coexist with combined replacements  
+**Fix**: Remove or clearly mark unused files (see Structural Issues section)
